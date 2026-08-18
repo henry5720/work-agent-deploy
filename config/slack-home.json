@@ -13,7 +13,7 @@
       "type": "section",
       "text": {
         "type": "mrkdwn",
-        "text": "*把 Slack 待辦和程式碼現況接起來的唯讀助理*\n到上方的「訊息」分頁直接提問，或在待辦列的 item 留言串 @ 我。"
+        "text": "*把 Slack 待辦、PM 留言和程式碼現況接起來的 backlog 助理*\n我會幫你查清楚現在怎麼運作，並把既有待辦整理成可決策的 issue 草稿。一般回覆預設講白話；想看檔案、API 或 code 時直接說。"
       }
     },
     {
@@ -23,21 +23,31 @@
       "type": "section",
       "text": {
         "type": "mrkdwn",
-        "text": "*查待辦*\n• `我的待辦`\n• `找包含「登入」的待辦`\n• `Rec... 這列目前進度是什麼？`"
+        "text": "*1. 查待辦與 PM 回覆*\n依照目前說話的人查指派事項，也能搜尋待辦內容、讀取某一列的完整留言。\n• `看一下我還有哪些待辦事項`\n• `我的待辦裡，哪些跟庫存有關？`\n• `PM 有沒有回我？`"
       }
     },
     {
       "type": "section",
       "text": {
         "type": "mrkdwn",
-        "text": "*查程式碼現況*\n• `teamsync-frontend 的登入流程在哪裡？`\n• `這個錯誤可能跟哪段 code 有關？`\n• `比較 frontend 和 backend 的欄位定義`"
+        "text": "*2. 查產品與程式碼現況*\n讀取最近同步的 frontend、backend、文件與工作流程 snapshot，確認問題是否存在、目前行為，以及可能的影響範圍。\n• `PM 說新增調撥後還要手動確認，現在真的有這個問題嗎？請用白話回答`\n• `比較 frontend 和 backend 的 shipped_at 定義`\n• `登入失敗可能經過哪些流程？請告訴我相關檔案`"
       }
     },
     {
       "type": "section",
       "text": {
         "type": "mrkdwn",
-        "text": "*偵察待辦列*\n在該列的 item 留言串輸入 `@派大星教授加博士先生 偵察這列`。完成後會在同一串交付可 review 的 issue 草稿。"
+        "text": "*3. 把既有待辦準備成可決策草稿*\n我會先讀待辦列、PM 留言和相關 repos，再整理現況、改動範圍、驗收方式與尚未定案的地方。完成後，草稿附件和人工 GitHub 連結會回到同一個 item 留言串。\n• 在待辦列留言：`@派大星教授加博士先生 偵察這列，確認問題是否存在並準備 issue 草稿`\n• 一般對話：`分析這幾件待辦，整理到可以決定是否開 issue`"
+      }
+    },
+    {
+      "type": "divider"
+    },
+    {
+      "type": "section",
+      "text": {
+        "type": "mrkdwn",
+        "text": "*從哪裡開始？*\n• *訊息分頁（DM）*：查自己的待辦、PM 回覆或 repo 現況。\n• *已邀請 bot 的 channel*：@ 我提問，後續留在同一個 thread。\n• *待辦列的 item 留言串*：最適合偵察；我能自動知道是哪一列，不用再貼 `Rec...`。\n只有「Bug/需求總表」裡已存在的待辦列能交付 issue 草稿；口述的新需求要先建立待辦列。"
       }
     },
     {
@@ -48,7 +58,7 @@
       "elements": [
         {
           "type": "mrkdwn",
-          "text": "唯讀邊界：不修改 code、不建立 GitHub issue、不 push、不更動待辦狀態，也不通知 PM 驗收。"
+          "text": "能力邊界：repo snapshot 唯讀；不修改 code、不建立 GitHub issue、不 push、不更動待辦狀態，也不通知 PM 驗收。Snapshot 代表最近一次同步成功的內容，不一定等於 GitHub 當下狀態。"
         }
       ]
     }

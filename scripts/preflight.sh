@@ -2,6 +2,19 @@
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+
+if [[ -z ${SNAPSHOT_ROOT:-} && -f "$ROOT/.env" ]]; then
+  while IFS= read -r line; do
+    [[ $line == SNAPSHOT_ROOT=* ]] || continue
+    SNAPSHOT_ROOT=${line#SNAPSHOT_ROOT=}
+    SNAPSHOT_ROOT=${SNAPSHOT_ROOT#\"}
+    SNAPSHOT_ROOT=${SNAPSHOT_ROOT%\"}
+    SNAPSHOT_ROOT=${SNAPSHOT_ROOT#\'}
+    SNAPSHOT_ROOT=${SNAPSHOT_ROOT%\'}
+    SNAPSHOT_ROOT=${SNAPSHOT_ROOT//'${HOME}'/$HOME}
+    break
+  done < "$ROOT/.env"
+fi
 SNAPSHOT_ROOT=${SNAPSHOT_ROOT:-/srv/work-agent/repos}
 ENV_FILE="$ROOT/env/openab.env"
 STATE_DIR="$ROOT/runtime/openab"

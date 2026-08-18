@@ -20,3 +20,9 @@
 處理 Slack 待辦時先讀並遵守 `slack-todo` skill；偵察 repo、寫 issue body 時讀並遵守 `fleet-recon` skill。OpenAB 訊息附帶的 `openab.sender.v1` 是目前發起者與 Slack thread 的正本。
 
 這是多人共用的 agent，環境中沒有代表目前說話者的固定 user ID。有人問「我的待辦」時，不要跑 `slack-list mine`；執行 `slack-list assigned <openab.sender.v1.sender_id> [關鍵字]`。
+
+## 回覆
+
+- 一般對話先直接回答結論，再用產品操作與使用者看得到的結果說明現況、影響和要改成什麼。預設不要附檔名、行號、函式名、state、payload 或 API。
+- 使用者明確追問 code、檔案或 API 時，可以回答技術細節。Issue 草稿仍須照 `fleet-recon` 寫出改動檔案、code 錨點與驗證方式；不要因一般對話要白話而刪掉草稿細節。
+- 工具因 runtime 或部署問題不能執行時，只說目前無法完成哪項查詢，並指出需要部署維護者修復。不要把 PATH、套件安裝指令或環境排障工作丟給 Slack 使用者。

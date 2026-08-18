@@ -89,6 +89,12 @@ Snapshot代表最近一次同步成功的狀態，不保證和 GitHub當下完�
 
 草稿是消耗品。核准者看完後應選擇建立任務、當天直接派工或退回修改，不把 drafts目錄養成第二套 backlog。
 
+## 對話回覆
+
+一般 Slack 對話先回答產品結論、使用者目前會遇到什麼，以及期望改成什麼。除非授權使用者明確追問，否則不在對話回覆附檔名、行號、函式名、state、payload 或 API；這些工程細節留在 issue 草稿。
+
+Runtime或部署故障造成工具不能執行時，backlog agent只告知哪項查詢暫時不可用，並指出需要部署維護者修復，不要求 Slack 使用者執行 container排障或安裝套件。
+
 ## 執行與持久化
 
 - 一個 OpenAB instance，共用最多 10 個 sessions。
@@ -97,6 +103,7 @@ Snapshot代表最近一次同步成功的狀態，不保證和 GitHub當下完�
 - OpenAB state與草稿存在 deployment repo的 Git-ignored `runtime/`，不隨 container重建刪除。
 - Project資料中只有 `/home/node/drafts` 可寫；repo snapshots全部唯讀。
 - OpenAB image使用固定 multi-arch digest，不跟浮動 tag更新。
+- Runtime image從固定 digest的 OpenAB image建置，只額外提供 `slack-list` 所需的 Python 3。
 
 ## 明確不做
 

@@ -16,7 +16,7 @@ deployment host
   -> 專用 GitHub SSH key，只存在 host
 ```
 
-Container 沒有 GitHub token、SSH key、Docker socket或可寫的 repo checkout。OpenAB image 以 multi-arch digest 固定，不跟浮動 tag 更新。
+Container 沒有 GitHub token、SSH key、Docker socket或可寫的 repo checkout。Runtime image由固定 multi-arch digest的 OpenAB image加上 Python 3建置，不跟浮動 OpenAB tag更新。
 
 ## Repo 內容
 
@@ -24,6 +24,7 @@ Container 沒有 GitHub token、SSH key、Docker socket或可寫的 repo checkou
 - `CLAUDE.md`：給維護這個 deployment repo的 agent；不會 mount進 container。
 - `docs/system-design.md`：完整系統設計 spec、信任邊界、流程與驗收情境。
 - `.env.example`：Local repos根目錄設定；複製成 root `.env` 後由 Compose自動載入。
+- `Dockerfile`：在固定 OpenAB image上加入 `slack-list` 所需的 Python 3。
 - `compose.yaml`：單一 OpenAB + Claude Code container。
 - `config/openab.toml`：Slack allowlist、session pool、workspace aliases。
 - `config/slack-home.json`：授權使用者看到的 Slack Home功能首頁。

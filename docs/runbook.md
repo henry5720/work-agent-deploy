@@ -61,7 +61,7 @@ mkdir -p \
   runtime/drafts
 
 ./tests/static.sh
-docker compose pull
+docker compose build --pull
 docker compose up -d
 docker compose exec backlog-agent claude auth login
 docker compose ps
@@ -135,7 +135,9 @@ docker compose logs --tail=100 backlog-agent
 ```bash
 docker compose ps
 docker compose exec backlog-agent sh -lc \
-  'test ! -w /home/node/code/teamsync-frontend &&
+  'python3 --version >/dev/null &&
+   /home/node/code/work-helper/bin/slack-list --help >/dev/null &&
+   test ! -w /home/node/code/teamsync-frontend &&
    test ! -w /home/node/code/teamsync-backend &&
    test -w /home/node/drafts &&
    test ! -e /home/node/.ssh'

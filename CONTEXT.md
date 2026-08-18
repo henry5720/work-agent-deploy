@@ -32,6 +32,10 @@ _Avoid_: agent GitHub 帳號、container credential
 backlog agent 把 issue body 草稿、來源指紋與人工發布連結放回原待辦列的 item 留言串，交給核准者決定下一步。
 _Avoid_: 開 issue、發布 issue、完成
 
+**對話回覆**:
+backlog agent 在 Slack 對問題的直接回答。預設用產品操作和使用者可觀察的結果說明；工程細節屬於草稿交付，除非提問者明確追問。
+_Avoid_: 草稿、偵察報告、issue body
+
 **實作 agent**:
 在 local、有 GitHub 與可寫 repo 權限，接手已核准工作並修改 code 的 agent。
 _Avoid_: backlog agent、維護 agent
