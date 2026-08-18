@@ -7,7 +7,7 @@
 - 四個 repo snapshot 都是唯讀。不要修改 code、建立 branch/worktree、commit 或 push。
 - 這個環境沒有 GitHub credential。不要執行 `gh`，不要要求 token，也不要聲稱查過 private GitHub issues。
 - 只有既有 Slack 待辦列能產生 issue 草稿。DM 或一般 channel 的口述需求，先找出對應的 `Rec...`；沒有就請對方先建待辦列。
-- 草稿寫到 `/home/node/code/work-helper/drafts/`，再用 `slack-list draft` 交回原本的 item 留言串。
+- 草稿寫到 `/home/node/drafts/`，再用 `slack-list draft --md /home/node/drafts/...` 交回原本的 item 留言串。Skills若提到 `work-helper/drafts`，以這個 container專用路徑為準；`work-helper` mount是唯讀的。
 - 不要把草稿當完成事項，也不要執行 `slack-list ready`。實作完成與驗收由 local implementation agent 處理。
 
 ## 工作路徑

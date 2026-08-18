@@ -26,7 +26,7 @@ Slack 待辦角色如回報對象、核准者、負責人，沿用 `work-helper/
       -> Claude Code backlog agent
         -> Slack Lists API
         -> 唯讀 repo snapshots
-        -> 可寫 drafts 目錄
+        -> 可寫 `/home/node/drafts` 目錄
 
 GitHub
   -> deployment host 的 snapshot 同步者
@@ -94,8 +94,8 @@ Snapshot代表最近一次同步成功的狀態，不保證和 GitHub當下完�
 - 一個 OpenAB instance，共用最多 10 個 sessions。
 - 閒置 session 4 小時後回收。
 - Claude Code login存在獨立 credential volume。
-- OpenAB state與草稿存在 deployment host，不隨 container重建刪除。
-- Project資料中只有 drafts可寫；repo snapshots全部唯讀。
+- OpenAB state與草稿存在 deployment repo的 Git-ignored `runtime/`，不隨 container重建刪除。
+- Project資料中只有 `/home/node/drafts` 可寫；repo snapshots全部唯讀。
 - OpenAB image使用固定 multi-arch digest，不跟浮動 tag更新。
 
 ## 明確不做

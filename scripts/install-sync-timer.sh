@@ -14,8 +14,8 @@ if [[ "$ROOT" != "$EXPECTED_ROOT" ]]; then
 fi
 
 sudo install -d -o "$USER_NAME" -g "$GROUP_NAME" /srv/work-agent/repos
-sudo install -d -o "$USER_NAME" -g "$GROUP_NAME" /srv/work-agent/state/openab
-sudo install -d -o "$USER_NAME" -g "$GROUP_NAME" /srv/work-agent/drafts
+sudo install -d -o "$USER_NAME" -g "$GROUP_NAME" "$ROOT/runtime/openab"
+sudo install -d -o "$USER_NAME" -g "$GROUP_NAME" "$ROOT/runtime/drafts"
 sudo install -m 0644 "$ROOT/systemd/work-agent-snapshots@.service" /etc/systemd/system/work-agent-snapshots@.service
 sudo install -m 0644 "$ROOT/systemd/work-agent-snapshots@.timer" /etc/systemd/system/work-agent-snapshots@.timer
 sudo systemctl daemon-reload

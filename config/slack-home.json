@@ -1,0 +1,56 @@
+{
+  "type": "home",
+  "blocks": [
+    {
+      "type": "header",
+      "text": {
+        "type": "plain_text",
+        "text": "派大星教授加博士先生",
+        "emoji": true
+      }
+    },
+    {
+      "type": "section",
+      "text": {
+        "type": "mrkdwn",
+        "text": "*把 Slack 待辦和程式碼現況接起來的唯讀助理*\n到上方的「訊息」分頁直接提問，或在待辦列的 item 留言串 @ 我。"
+      }
+    },
+    {
+      "type": "divider"
+    },
+    {
+      "type": "section",
+      "text": {
+        "type": "mrkdwn",
+        "text": "*查待辦*\n• `我的待辦`\n• `找包含「登入」的待辦`\n• `Rec... 這列目前進度是什麼？`"
+      }
+    },
+    {
+      "type": "section",
+      "text": {
+        "type": "mrkdwn",
+        "text": "*查程式碼現況*\n• `teamsync-frontend 的登入流程在哪裡？`\n• `這個錯誤可能跟哪段 code 有關？`\n• `比較 frontend 和 backend 的欄位定義`"
+      }
+    },
+    {
+      "type": "section",
+      "text": {
+        "type": "mrkdwn",
+        "text": "*偵察待辦列*\n在該列的 item 留言串輸入 `@派大星教授加博士先生 偵察這列`。完成後會在同一串交付可 review 的 issue 草稿。"
+      }
+    },
+    {
+      "type": "divider"
+    },
+    {
+      "type": "context",
+      "elements": [
+        {
+          "type": "mrkdwn",
+          "text": "唯讀邊界：不修改 code、不建立 GitHub issue、不 push、不更動待辦狀態，也不通知 PM 驗收。"
+        }
+      ]
+    }
+  ]
+}

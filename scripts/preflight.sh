@@ -3,9 +3,9 @@ set -euo pipefail
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 SNAPSHOT_ROOT=${SNAPSHOT_ROOT:-/srv/work-agent/repos}
-STATE_ROOT=${STATE_ROOT:-/srv/work-agent/state}
-DRAFT_ROOT=${DRAFT_ROOT:-/srv/work-agent/drafts}
 ENV_FILE="$ROOT/env/openab.env"
+STATE_DIR="$ROOT/runtime/openab"
+DRAFT_DIR="$ROOT/runtime/drafts"
 
 fail() {
   printf 'FAIL: %s\n' "$*" >&2
@@ -22,8 +22,8 @@ grep -q '^WORK_HELPER_ISSUE_MODE=manual$' "$ENV_FILE" || fail "WORK_HELPER_ISSUE
 grep -q '^SLACK_BOT_TOKEN=xoxb-' "$ENV_FILE" || fail "SLACK_BOT_TOKEN must start with xoxb-"
 grep -q '^SLACK_APP_TOKEN=xapp-' "$ENV_FILE" || fail "SLACK_APP_TOKEN must start with xapp-"
 ! grep -q 'replace-me' "$ENV_FILE" || fail "$ENV_FILE still contains placeholder values"
-[[ -w "$STATE_ROOT/openab" ]] || fail "$STATE_ROOT/openab is not writable"
-[[ -w "$DRAFT_ROOT" ]] || fail "$DRAFT_ROOT is not writable"
+[[ -w "$STATE_DIR" ]] || fail "$STATE_DIR is not writable"
+[[ -w "$DRAFT_DIR" ]] || fail "$DRAFT_DIR is not writable"
 
 while IFS='|' read -r name _ branch; do
   [[ -z "$name" || "$name" == \#* ]] && continue

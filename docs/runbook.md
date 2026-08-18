@@ -1,47 +1,88 @@
 # Work Agent Runbook
 
-Local smoke test與deployment host使用同一份 `compose.yaml`、`config/openab.toml`、
-`agents/CLAUDE.md` 與 `env/openab.env` schema，不維護兩套 runtime設定。
+Local與deployment host共用同一份 Compose及runtime設定。State與草稿都放在本 repo的 `runtime/`；
+Local用 root `.env` 掛載現有 repos，deployment host不建立 root `.env`，使用 `/srv/work-agent/repos`。
 
-| 差異 | Local smoke test | Deployment host |
-|---|---|---|
-| Compose host設定 | root `.env` | 不建立 root `.env`，使用 Compose預設值 |
-| Repo來源 | root `.env` 指向 `$HOME/code` 現有 checkout | `/srv/work-agent/repos` 專用 snapshots |
-| State與草稿 | root `.env` 指向 `$HOME/.local/share/work-agent` | `/srv/work-agent` |
-| Snapshot更新 | 手動使用目前 checkout | systemd timer定期 fetch/reset |
-| Slack secrets | `env/openab.env` 的 local實值 | 同一檔案格式，填 deployment host實值 |
-| Claude login | Local Docker volume | Deployment host Docker volume |
+## 1. 設定 Slack App
 
-## Local Smoke Test
+這只需做一次，local與deployment host共用。
 
-先依下方「設定 Slack app」完成 Socket Mode與 scopes。接著：
+1. 開啟 **Socket Mode**。
+2. 建立 App-Level Token，scope選 `connections:write`，取得 `xapp-...`。
+3. 開啟 **Event Subscriptions**，訂閱 bot events：`app_mention`、`message.groups`、`message.im`。
+4. 到 **App Home** 開啟 **Messages Tab**，並允許使用者從 Messages Tab傳送訊息。
+5. 加入 bot token scopes：
+
+```text
+app_mentions:read
+chat:write
+files:read
+files:write
+groups:history
+groups:read
+im:history
+lists:read
+lists:write
+reactions:write
+users:read
+```
+
+6. **Reinstall to Workspace**，取得新的 `xoxb-...`。
+7. 只把 app邀進 `C0BPZRN6H3R` 與 `C0B9PSESQ2U`。
+
+Socket Mode用 WebSocket接收 events，所以不用填 Event Subscriptions的 Request URL，也不用設定
+Incoming Webhook。OpenAB使用 `xoxb-...` 透過 Slack Web API回覆訊息。
+
+發布功能首頁給 `config/openab.toml` 內的授權使用者：
+
+```bash
+./scripts/publish-slack-home.sh
+```
+
+文案放在 `config/slack-home.json`。修改後重跑同一指令即可；不需要訂閱 `app_home_opened`。
+
+授權使用者維護在 `config/openab.toml`。因 OpenAB目前需要 `allow_all_channels = true` 才能收 DM，
+不可把 app邀進其他 channel，否則會擴大入口。
+
+## 2. Local 首次啟動
+
+同一個 Slack app同時只能跑一個 OpenAB instance；local測試前先停止正式 instance。
 
 ```bash
 cd "$HOME/code/work-agent-deploy"
-cp .env.example .env
-cp env/openab.env.example env/openab.env
+
+test -f .env || cp .env.example .env
+test -f env/openab.env || cp env/openab.env.example env/openab.env
 chmod 600 env/openab.env
 $EDITOR env/openab.env
 
 mkdir -p \
-  "$HOME/.local/share/work-agent/state/openab" \
-  "$HOME/.local/share/work-agent/drafts"
+  runtime/openab \
+  runtime/drafts
 
 ./tests/static.sh
 docker compose pull
 docker compose up -d
 docker compose exec backlog-agent claude auth login
-docker compose logs -f --tail=100 backlog-agent
+docker compose ps
+docker compose logs --tail=100 backlog-agent
 ```
 
-這會直接唯讀 mount目前四個 local checkouts，適合 smoke test；它們可能包含尚未 push的 commit，
-所以不能拿這個結果代表 deployment host的 snapshot已同步。
+`env/openab.env` 至少要填入 `SLACK_BOT_TOKEN` 與 `SLACK_APP_TOKEN`，並保留：
 
-Root `.env` 只給 Docker Compose做 host path interpolation；`env/openab.env` 才會透過
-`compose.yaml` 的 `env_file` 傳進 container。兩份檔案都被 Git忽略。
+```text
+WORK_HELPER_ISSUE_MODE=manual
+```
 
-同一個 Slack app不要同時連兩個 OpenAB instances。Socket Mode會把 events分配到不同連線，
-local測試時先停止另一個 instance，或使用獨立測試 app。
+Root `.env` 只指定四個 repos的共同根目錄；`env/openab.env` 才會傳進 container。
+`.env`、`env/openab.env` 與 `runtime/` 都不進 Git。Claude login存在 named volume
+`claude-credentials`，重建 container後仍保留。
+
+在 Slack確認：
+
+1. DM詢問一個 repo問題。
+2. 在 `#你為什麼不問問神奇海螺ㄋ` @ bot查待辦。
+3. 在待辦列的 item留言串 @ bot，確認它能找到正確的 `Rec...`。
 
 停止 local instance：
 
@@ -49,159 +90,62 @@ local測試時先停止另一個 instance，或使用獨立測試 app。
 docker compose down
 ```
 
-## Deployment Host Setup
+## 3. Deployment Host 首次部署
 
-### 1. 準備專用 GitHub SSH key
+### GitHub 讀取權限
 
-登入準備執行服務的 deployment user，建立一把只供 snapshot sync 使用的 key：
+使用 deployment user建立只能讀 snapshots的 SSH key：
 
 ```bash
 ssh-keygen -t ed25519 -f ~/.ssh/work-agent-github -C work-agent@deployment-host
 chmod 600 ~/.ssh/work-agent-github
 cat ~/.ssh/work-agent-github.pub
+```
+
+把 public key加到能讀 `config/repos.conf` 內四個 private repos的 GitHub account。
+Private key只留在 host，不得放進 repo、Docker env或 container。
+
+```bash
 ssh -T -i ~/.ssh/work-agent-github -o IdentitiesOnly=yes git@github.com
 ```
 
-把 public key 加到一個能讀 `config/repos.conf` 內四個 private repos的 GitHub account。這裡不用單一 repo 的 deploy key，因為同一把 key要跨多個 repos。
+### 安裝
 
-Private key不得放進這個 repo、Docker env、volume或 container。
-
-### 2. 放置部署 repo
-
-systemd unit 固定使用：
-
-```text
-$HOME/code/work-agent-deploy
-```
-
-尚未發布 GitHub remote 前，可先從 local 安全傳到 deployment host；發布 private repo 後改用 host 的專用 SSH key clone。不要把 deploy repo 掛進 agent container。
-
-### 3. 啟用 snapshot sync
+Deployment repo必須放在 `$HOME/code/work-agent-deploy`，而且不要建立 root `.env`。
 
 ```bash
 cd "$HOME/code/work-agent-deploy"
+
 ./scripts/install-sync-timer.sh
-systemctl list-timers "work-agent-snapshots@$(id -un).timer"
-```
 
-首次執行會建立：
-
-```text
-/srv/work-agent/repos/work-helper         main
-/srv/work-agent/repos/work-docs           main
-/srv/work-agent/repos/teamsync-frontend    dev
-/srv/work-agent/repos/teamsync-backend     master
-```
-
-確認同步狀態：
-
-```bash
-sudo systemctl status "work-agent-snapshots@$(id -un).service"
-sudo journalctl -u "work-agent-snapshots@$(id -un).service" -n 100 --no-pager
-```
-
-同步 script 會 fetch 所有 remote branches/tags，但 working snapshot只 reset到 `config/repos.conf` 指定 branch。這些目錄是機器產物，任何手動修改都會在下次同步被清掉。
-
-### 4. 設定 Slack app
-
-沿用 `work-helper` app，顯示名稱改成「派大星教授加博士先生」。
-
-#### Socket Mode
-
-1. 開啟 Socket Mode。
-2. 建立 app-level token，scope選 `connections:write`。
-3. 保存新的 `xapp-...`。
-
-#### Bot events
-
-- `app_mention`
-- `message.groups`
-- `message.im`
-
-若未來要進 public channel，再加 `message.channels`。
-
-#### Bot token scopes
-
-- `app_mentions:read`
-- `chat:write`
-- `files:read`
-- `files:write`
-- `groups:history`
-- `groups:read`
-- `im:history`
-- `lists:read`
-- `lists:write`
-- `reactions:write`
-- `users:read`
-
-Scope或 event有變更後，必須 **Reinstall to Workspace** 並換掉舊 `xoxb-...`。
-
-只把 app 邀進以下兩個 private channels：
-
-- `C0BPZRN6H3R`，`#你為什麼不問問神奇海螺ㄋ`
-- `C0B9PSESQ2U`，Bug/需求總表的 item 留言 backing channel
-
-`config/openab.toml` 明列 `#神奇海螺` 目前五位人類成員：
-
-```text
-U0B54FKJ93R
-U0B85LX4KKP
-U0B8ASE0ARX
-U0B8B04R57T
-U0B8CNK8GNQ
-```
-
-OpenAB `0.10.0-beta.3` 把 channel allowlist同時套到 DM channel ID。DM ID事前未知，所以設定為 `allow_all_channels = true`，再用上述 user allowlist及「只邀進兩個 channel」限制入口。邀 app進其他 channel會擴大入口，不能當一般操作。
-
-`assistant_mode = false`，因此不需要把 Slack app改成 AI app，也不需要 `assistant:write`。
-
-### 5. 寫入 secrets
-
-```bash
-cd "$HOME/code/work-agent-deploy"
-cp env/openab.env.example env/openab.env
+test -f env/openab.env || cp env/openab.env.example env/openab.env
 chmod 600 env/openab.env
-```
+$EDITOR env/openab.env
 
-填入 `SLACK_BOT_TOKEN` 與 `SLACK_APP_TOKEN`。保留：
-
-```text
-WORK_HELPER_ISSUE_MODE=manual
-```
-
-不要加入 GitHub token、GitHub SSH key或 Anthropic API key。Claude Code subscription使用下一步的 device login。
-
-### 6. 啟動與登入 Claude Code
-
-```bash
 ./scripts/deploy.sh
 docker compose exec backlog-agent claude auth login
+docker compose logs --tail=100 backlog-agent
 ```
 
-Login資料存在 named volume `claude-credentials`，container重建後仍保留。不要把該 volume export進 repo或備份到不受控位置。
+`install-sync-timer.sh` 會建立 `/srv/work-agent/repos` 與 repo內的 `runtime/`、首次同步 repos並啟用每五分鐘一次的 timer。
+`deploy.sh` 會先執行 preflight，再 pull及啟動 container。
 
-### 7. 驗證安全邊界
+### 驗證
 
 ```bash
 docker compose ps
-docker compose exec backlog-agent sh -lc 'test ! -w /home/node/code/teamsync-frontend'
-docker compose exec backlog-agent sh -lc 'test ! -w /home/node/code/teamsync-backend'
-docker compose exec backlog-agent sh -lc 'test -w /home/node/code/work-helper/drafts'
-docker compose exec backlog-agent sh -lc 'test ! -e /home/node/.ssh'
-docker compose exec backlog-agent sh -lc 'gh auth status; test $? -ne 0'
+docker compose exec backlog-agent sh -lc \
+  'test ! -w /home/node/code/teamsync-frontend &&
+   test ! -w /home/node/code/teamsync-backend &&
+   test -w /home/node/drafts &&
+   test ! -e /home/node/.ssh'
 ```
 
-接著依序測：
+接著重做 local段落的三個 Slack測試，再確認未授權帳號的訊息不會被處理。
 
-1. 授權使用者從 DM問一個只讀 repo問題。
-2. 在 `#你為什麼不問問神奇海螺ㄋ` @ bot查待辦。
-3. 在既有待辦列的 item 留言串 @ bot，確認它能用 sender context反查 `Rec...`。
-4. 要求偵察一列，確認它只上傳 Markdown草稿與人工 GitHub連結，沒有建立 issue或改狀態。
-5. 用不在 `allowed_users` 的帳號測試，確認 bot不處理訊息。
+## 4. 日常操作
 
-## 日常操作
-
-更新部署設定：
+更新部署：
 
 ```bash
 git pull --ff-only
@@ -209,22 +153,25 @@ git pull --ff-only
 ./scripts/deploy.sh
 ```
 
-看 log：
+查看 agent：
 
 ```bash
+docker compose ps
 docker compose logs -f --tail=200 backlog-agent
 ```
 
-手動更新 snapshots：
+查看或立即更新 snapshots：
 
 ```bash
+systemctl list-timers "work-agent-snapshots@$(id -un).timer"
 sudo systemctl start "work-agent-snapshots@$(id -un).service"
+sudo journalctl -u "work-agent-snapshots@$(id -un).service" -n 100 --no-pager
 ```
 
-停止 agent不會刪 credentials、state或草稿：
+停止 agent：
 
 ```bash
 docker compose down
 ```
 
-不要執行 `docker compose down -v`，那會刪 Claude login。OpenAB state與草稿在 `/srv/work-agent/`，不由 Compose刪除。
+不要執行 `docker compose down -v`，它會刪除 Claude login。`runtime/` 不會被 `down` 刪除。

@@ -23,12 +23,14 @@ Container 沒有 GitHub token、SSH key、Docker socket或可寫的 repo checkou
 - `CONTEXT.md`：角色與領域詞彙，避免把 backlog agent、維護 agent和實作 agent混在一起。
 - `CLAUDE.md`：給維護這個 deployment repo的 agent；不會 mount進 container。
 - `docs/system-design.md`：完整系統設計 spec、信任邊界、流程與驗收情境。
-- `.env.example`：Local Docker Compose的 host mount路徑範本；複製成 root `.env` 後自動載入。
+- `.env.example`：Local repos根目錄設定；複製成 root `.env` 後由 Compose自動載入。
 - `compose.yaml`：單一 OpenAB + Claude Code container。
 - `config/openab.toml`：Slack allowlist、session pool、workspace aliases。
+- `config/slack-home.json`：授權使用者看到的 Slack Home功能首頁。
 - `config/repos.conf`：四個 snapshot 的 remote 與基準 branch。
 - `agents/CLAUDE.md`：遠端 backlog agent 的行為邊界。
 - `scripts/update-snapshots.sh`：host 端 clone/fetch/reset。
+- `scripts/publish-slack-home.sh`：把 Home view發布給所有授權使用者。
 - `systemd/`：每 5 分鐘更新 snapshots。
 - `docs/runbook.md`：deployment host首次安裝、Slack 設定與日常操作。
 
@@ -42,7 +44,8 @@ git diff --check
 ```
 
 Local與deployment host共用同一套 runtime設定，不另建 local Compose。Local smoke test用 root `.env`
-把 snapshots、state與drafts改指向使用者目錄；完整命令見 [`docs/runbook.md`](docs/runbook.md#local-smoke-test)。
+把 snapshots指向 `$HOME/code`；state與drafts都放在被 Git忽略的 `runtime/`。完整命令見
+[`docs/runbook.md`](docs/runbook.md#2-local-首次啟動)。
 
 目標機器填好 secrets 並完成首次 snapshot sync 後，再跑：
 
