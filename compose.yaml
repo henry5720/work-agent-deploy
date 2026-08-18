@@ -1,0 +1,37 @@
+name: work-agent
+
+services:
+  backlog-agent:
+    image: ghcr.io/openabdev/openab:0.10.0-beta.3-claude@sha256:2b9fca58d898fdc5bceb2d48bcdd774287ece3352d6e3efbad7a213072232a89
+    container_name: work-agent
+    restart: unless-stopped
+    env_file:
+      - path: env/openab.env
+        required: false
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cpus: 6.0
+    mem_limit: 8g
+    pids_limit: 1024
+    stop_grace_period: 30s
+    tmpfs:
+      - /tmp:size=1g,mode=1777
+    volumes:
+      - ./config/openab.toml:/etc/openab/config.toml:ro
+      - ./agents/CLAUDE.md:/home/node/CLAUDE.md:ro
+      - ./managed-claude-settings.json:/home/node/.claude/settings.json:ro
+      - claude-credentials:/home/node/.claude
+      - ${STATE_ROOT:-/srv/work-agent/state}/openab:/home/node/.openab
+      - ${DRAFT_ROOT:-/srv/work-agent/drafts}:/home/node/code/work-helper/drafts
+      - ${SNAPSHOT_ROOT:-/srv/work-agent/repos}/work-helper:/home/node/code/work-helper:ro
+      - ${SNAPSHOT_ROOT:-/srv/work-agent/repos}/work-docs:/home/node/code/work-docs:ro
+      - ${SNAPSHOT_ROOT:-/srv/work-agent/repos}/teamsync-frontend:/home/node/code/teamsync-frontend:ro
+      - ${SNAPSHOT_ROOT:-/srv/work-agent/repos}/teamsync-backend:/home/node/code/teamsync-backend:ro
+      - ${SNAPSHOT_ROOT:-/srv/work-agent/repos}/work-helper/skills/slack-todo:/home/node/.claude/skills/slack-todo:ro
+      - ${SNAPSHOT_ROOT:-/srv/work-agent/repos}/work-helper/skills/fleet-recon:/home/node/.claude/skills/fleet-recon:ro
+
+volumes:
+  claude-credentials:

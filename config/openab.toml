@@ -1,0 +1,45 @@
+[slack]
+bot_token = "${SLACK_BOT_TOKEN}"
+app_token = "${SLACK_APP_TOKEN}"
+
+# OpenAB 0.10 applies this allowlist to DMs too. Keep channels open so DMs work;
+# access is bounded by allowed_users and by inviting the app only to approved channels.
+allow_all_channels = true
+allow_all_users = false
+allowed_users = [
+  "U0B54FKJ93R",
+  "U0B85LX4KKP",
+  "U0B8ASE0ARX",
+  "U0B8B04R57T",
+  "U0B8CNK8GNQ",
+]
+allow_bot_messages = "off"
+allow_user_messages = "involved"
+assistant_mode = false
+streaming = false
+
+[agent]
+command = "claude-agent-acp"
+args = []
+working_dir = "/home/node/code"
+inherit_env = [
+  "SLACK_BOT_TOKEN",
+  "SLACK_LIST_ID",
+  "SLACK_TEAM_ID",
+  "WORK_HELPER_ISSUE_MODE",
+]
+
+[pool]
+max_sessions = 10
+session_ttl_hours = 4
+
+[workspace.aliases]
+helper = "/home/node/code/work-helper"
+docs = "/home/node/code/work-docs"
+frontend = "/home/node/code/teamsync-frontend"
+backend = "/home/node/code/teamsync-backend"
+
+[reactions]
+enabled = true
+remove_after_reply = true
+tool_display = "compact"
