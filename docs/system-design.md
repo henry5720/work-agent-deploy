@@ -22,11 +22,12 @@ Slack 待辦角色如回報對象、核准者、負責人，沿用 `work-helper/
 ```text
 授權使用者
   -> Slack DM / private channel / item 留言串
-    -> OpenAB
-      -> Claude Code backlog agent
-        -> Slack Lists API
-        -> 唯讀 repo snapshots
-        -> 可寫 `/home/node/drafts` 目錄
+    -> restricted Incus deployment host
+      -> OpenAB container
+        -> Claude Code backlog agent
+          -> Slack Lists API
+          -> 唯讀 repo snapshots
+          -> 可寫 `/home/node/drafts` 目錄
 
 GitHub
   -> deployment host 的 snapshot 同步者
@@ -37,6 +38,8 @@ local 實作 agent
 ```
 
 GitHub credential只到 deployment host 與 local 實作環境，不跨進 backlog agent container。詳見 [`adr/0001-github-access-stops-at-the-host-boundary.md`](adr/0001-github-access-stops-at-the-host-boundary.md)。
+
+Deployment host本身是restricted Incus container。實體host不保存Slack secrets、Claude credential、repo snapshots或snapshot private key，也不直接執行OpenAB Compose。詳見 [`adr/0002-run-the-deployment-host-inside-restricted-incus.md`](adr/0002-run-the-deployment-host-inside-restricted-incus.md)。
 
 ## 互動入口
 

@@ -3,6 +3,10 @@
 Local與deployment host共用同一份 Compose及runtime設定。State與草稿都放在本 repo的 `runtime/`；
 Local用 root `.env` 掛載現有 repos，deployment host不建立 root `.env`，使用 `/srv/work-agent/repos`。
 
+正式的deployment host是restricted Incus container，不是實體host。Incus instance需啟用nesting與開機自動啟動，內部提供systemd、Docker Compose、Git、SSH client、Python 3、curl與jq。以下deployment host命令都在該instance內、以專用deployment user執行；實體host只負責啟停或進入Incus instance。
+
+Incus instance必須有可用的IPv4 route與DNS，並能連線到GitHub、Slack、Claude及Linux套件來源。不要把實體host目錄bind mount進instance來傳遞credentials；secrets、snapshot key與Claude credential直接建立或匯入instance內。
+
 ## 1. 設定 Slack App
 
 這只需做一次，local與deployment host共用。
