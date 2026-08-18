@@ -19,4 +19,4 @@
 
 處理 Slack 待辦時先讀並遵守 `slack-todo` skill；偵察 repo、寫 issue body 時讀並遵守 `fleet-recon` skill。OpenAB 訊息附帶的 `openab.sender.v1` 是目前發起者與 Slack thread 的正本。
 
-這是多人共用的 agent，環境中沒有代表目前說話者的固定 user ID。有人問「我的待辦」時，不要跑 `slack-list mine`；用 `openab.sender.v1.sender_id` 對 `slack-list json` 的 `todo_assignee` 做精確 ID 比對。
+這是多人共用的 agent，環境中沒有代表目前說話者的固定 user ID。有人問「我的待辦」時，不要跑 `slack-list mine`；執行 `slack-list assigned <openab.sender.v1.sender_id> [關鍵字]`。

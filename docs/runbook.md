@@ -1,6 +1,57 @@
-# Deployment Host 部署手冊
+# Work Agent Runbook
 
-## 1. 準備專用 GitHub SSH key
+Local smoke test與deployment host使用同一份 `compose.yaml`、`config/openab.toml`、
+`agents/CLAUDE.md` 與 `env/openab.env` schema，不維護兩套 runtime設定。
+
+| 差異 | Local smoke test | Deployment host |
+|---|---|---|
+| Compose host設定 | root `.env` | 不建立 root `.env`，使用 Compose預設值 |
+| Repo來源 | root `.env` 指向 `$HOME/code` 現有 checkout | `/srv/work-agent/repos` 專用 snapshots |
+| State與草稿 | root `.env` 指向 `$HOME/.local/share/work-agent` | `/srv/work-agent` |
+| Snapshot更新 | 手動使用目前 checkout | systemd timer定期 fetch/reset |
+| Slack secrets | `env/openab.env` 的 local實值 | 同一檔案格式，填 deployment host實值 |
+| Claude login | Local Docker volume | Deployment host Docker volume |
+
+## Local Smoke Test
+
+先依下方「設定 Slack app」完成 Socket Mode與 scopes。接著：
+
+```bash
+cd "$HOME/code/work-agent-deploy"
+cp .env.example .env
+cp env/openab.env.example env/openab.env
+chmod 600 env/openab.env
+$EDITOR env/openab.env
+
+mkdir -p \
+  "$HOME/.local/share/work-agent/state/openab" \
+  "$HOME/.local/share/work-agent/drafts"
+
+./tests/static.sh
+docker compose pull
+docker compose up -d
+docker compose exec backlog-agent claude auth login
+docker compose logs -f --tail=100 backlog-agent
+```
+
+這會直接唯讀 mount目前四個 local checkouts，適合 smoke test；它們可能包含尚未 push的 commit，
+所以不能拿這個結果代表 deployment host的 snapshot已同步。
+
+Root `.env` 只給 Docker Compose做 host path interpolation；`env/openab.env` 才會透過
+`compose.yaml` 的 `env_file` 傳進 container。兩份檔案都被 Git忽略。
+
+同一個 Slack app不要同時連兩個 OpenAB instances。Socket Mode會把 events分配到不同連線，
+local測試時先停止另一個 instance，或使用獨立測試 app。
+
+停止 local instance：
+
+```bash
+docker compose down
+```
+
+## Deployment Host Setup
+
+### 1. 準備專用 GitHub SSH key
 
 登入準備執行服務的 deployment user，建立一把只供 snapshot sync 使用的 key：
 
@@ -15,7 +66,7 @@ ssh -T -i ~/.ssh/work-agent-github -o IdentitiesOnly=yes git@github.com
 
 Private key不得放進這個 repo、Docker env、volume或 container。
 
-## 2. 放置部署 repo
+### 2. 放置部署 repo
 
 systemd unit 固定使用：
 
@@ -25,7 +76,7 @@ $HOME/code/work-agent-deploy
 
 尚未發布 GitHub remote 前，可先從 local 安全傳到 deployment host；發布 private repo 後改用 host 的專用 SSH key clone。不要把 deploy repo 掛進 agent container。
 
-## 3. 啟用 snapshot sync
+### 3. 啟用 snapshot sync
 
 ```bash
 cd "$HOME/code/work-agent-deploy"
@@ -51,17 +102,17 @@ sudo journalctl -u "work-agent-snapshots@$(id -un).service" -n 100 --no-pager
 
 同步 script 會 fetch 所有 remote branches/tags，但 working snapshot只 reset到 `config/repos.conf` 指定 branch。這些目錄是機器產物，任何手動修改都會在下次同步被清掉。
 
-## 4. 設定 Slack app
+### 4. 設定 Slack app
 
 沿用 `work-helper` app，顯示名稱改成「派大星教授加博士先生」。
 
-### Socket Mode
+#### Socket Mode
 
 1. 開啟 Socket Mode。
 2. 建立 app-level token，scope選 `connections:write`。
 3. 保存新的 `xapp-...`。
 
-### Bot events
+#### Bot events
 
 - `app_mention`
 - `message.groups`
@@ -69,7 +120,7 @@ sudo journalctl -u "work-agent-snapshots@$(id -un).service" -n 100 --no-pager
 
 若未來要進 public channel，再加 `message.channels`。
 
-### Bot token scopes
+#### Bot token scopes
 
 - `app_mentions:read`
 - `chat:write`
@@ -104,7 +155,7 @@ OpenAB `0.10.0-beta.3` 把 channel allowlist同時套到 DM channel ID。DM ID�
 
 `assistant_mode = false`，因此不需要把 Slack app改成 AI app，也不需要 `assistant:write`。
 
-## 5. 寫入 secrets
+### 5. 寫入 secrets
 
 ```bash
 cd "$HOME/code/work-agent-deploy"
@@ -120,7 +171,7 @@ WORK_HELPER_ISSUE_MODE=manual
 
 不要加入 GitHub token、GitHub SSH key或 Anthropic API key。Claude Code subscription使用下一步的 device login。
 
-## 6. 啟動與登入 Claude Code
+### 6. 啟動與登入 Claude Code
 
 ```bash
 ./scripts/deploy.sh
@@ -129,7 +180,7 @@ docker compose exec backlog-agent claude auth login
 
 Login資料存在 named volume `claude-credentials`，container重建後仍保留。不要把該 volume export進 repo或備份到不受控位置。
 
-## 7. 驗證安全邊界
+### 7. 驗證安全邊界
 
 ```bash
 docker compose ps

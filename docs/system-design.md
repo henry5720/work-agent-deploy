@@ -80,7 +80,8 @@ Snapshot代表最近一次同步成功的狀態，不保證和 GitHub當下完�
 
 ### 「我的待辦」
 
-這是多人共用的 agent，不能用固定的 `SLACK_MY_USER_ID` 判斷「我」。必須以當次 `openab.sender.v1.sender_id` 精確比對待辦列的 assignee user ID。
+這是多人共用的 agent，不能用固定的個人 ID判斷「我」。必須把當次
+`openab.sender.v1.sender_id` 傳給 `slack-list assigned`，精確比對待辦列的 assignee user ID。
 
 ## 草稿邊界
 
