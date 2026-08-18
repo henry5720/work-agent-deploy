@@ -35,8 +35,8 @@ grep -q '^WORK_HELPER_ISSUE_MODE=manual$' "$ENV_FILE" || fail "WORK_HELPER_ISSUE
 grep -q '^SLACK_BOT_TOKEN=xoxb-' "$ENV_FILE" || fail "SLACK_BOT_TOKEN must start with xoxb-"
 grep -q '^SLACK_APP_TOKEN=xapp-' "$ENV_FILE" || fail "SLACK_APP_TOKEN must start with xapp-"
 ! grep -q 'replace-me' "$ENV_FILE" || fail "$ENV_FILE still contains placeholder values"
-[[ -w "$STATE_DIR" ]] || fail "$STATE_DIR is not writable"
-[[ -w "$DRAFT_DIR" ]] || fail "$DRAFT_DIR is not writable"
+[[ $(stat -c '%u:%g' "$STATE_DIR") == 1000:1000 ]] || fail "$STATE_DIR must be owned by container user 1000:1000"
+[[ $(stat -c '%u:%g' "$DRAFT_DIR") == 1000:1000 ]] || fail "$DRAFT_DIR must be owned by container user 1000:1000"
 
 while IFS='|' read -r name _ branch; do
   [[ -z "$name" || "$name" == \#* ]] && continue

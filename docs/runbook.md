@@ -137,6 +137,7 @@ docker compose ps
 docker compose exec backlog-agent sh -lc \
   'python3 --version >/dev/null &&
    /home/node/code/work-helper/bin/slack-list --help >/dev/null &&
+   test -w /home/node/.openab &&
    test ! -w /home/node/code/teamsync-frontend &&
    test ! -w /home/node/code/teamsync-backend &&
    test -w /home/node/drafts &&

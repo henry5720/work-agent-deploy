@@ -37,6 +37,8 @@ grep -q 'apt-get install -y --no-install-recommends python3' "$ROOT/Dockerfile"
 grep -q 'dockerfile: Dockerfile' "$ROOT/compose.yaml"
 grep -q 'exec -T backlog-agent python3 --version' "$ROOT/scripts/deploy.sh"
 grep -q 'slack-list --help' "$ROOT/scripts/deploy.sh"
+grep -q 'test -w /home/node/.openab' "$ROOT/scripts/deploy.sh"
+grep -q "must be owned by container user 1000:1000" "$ROOT/scripts/preflight.sh"
 grep -q ':ro' "$ROOT/compose.yaml"
 grep -Fq './agents/CLAUDE.md:/home/node/CLAUDE.md:ro' "$ROOT/compose.yaml"
 if grep -Fq -- '- ./CLAUDE.md:/home/node/CLAUDE.md' "$ROOT/compose.yaml"; then
