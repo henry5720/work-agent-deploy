@@ -6,10 +6,9 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 User=%i
-WorkingDirectory=%h/code/work-agent-deploy
+WorkingDirectory=~
 Environment=SNAPSHOT_ROOT=/srv/work-agent/repos
-Environment=GITHUB_SSH_KEY=%h/.ssh/work-agent-github
-ExecStart=%h/code/work-agent-deploy/scripts/update-snapshots.sh
+ExecStart=/bin/bash -lc 'exec "$HOME/code/work-agent-deploy/scripts/update-snapshots.sh"'
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
