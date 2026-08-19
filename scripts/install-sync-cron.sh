@@ -11,7 +11,9 @@ STATE_DIR=${XDG_STATE_HOME:-$HOME/.local/state}/work-agent
 SCHEDULE=${SNAPSHOT_SCHEDULE:-0 * * * *}
 MARKER='# work-agent-snapshots'
 
-mkdir -p "$SNAPSHOT_ROOT" "$STATE_DIR" "$ROOT/runtime/openab" "$ROOT/runtime/drafts"
+# Create .index before any docker run, or Docker creates the bind source as root
+# and a host user without sudo can no longer write the CodeGraph index.
+mkdir -p "$SNAPSHOT_ROOT/.index" "$STATE_DIR" "$ROOT/runtime/openab" "$ROOT/runtime/drafts"
 chmod 0750 "$ROOT/runtime/openab" "$ROOT/runtime/drafts"
 
 # Rewrite our own line, leave every other crontab entry untouched.
