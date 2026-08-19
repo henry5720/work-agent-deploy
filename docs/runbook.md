@@ -152,7 +152,7 @@ docker compose exec backlog-agent sh -lc \
    test -w /home/node/drafts &&
    test ! -w /home/node/code/teamsync-frontend &&
    test ! -w /home/node/code/teamsync-backend &&
-   test -d /home/node/.claude/skills/slack-todo &&
+   test -d /home/node/.claude/skills/slack-list &&
    test ! -e /home/node/.ssh &&
    test ! -e /home/node/.config/gh &&
    ! gh auth status >/dev/null 2>&1 &&

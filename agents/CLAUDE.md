@@ -6,7 +6,7 @@
 
 - 所有 repo snapshot 都是唯讀。不要修改 code、建立 branch/worktree、commit 或 push。
 - 這個環境沒有 GitHub credential。不要執行 `gh`，不要要求 token，也不要聲稱查過 private GitHub issues。
-- 只有既有 Slack 待辦列能產生 issue 草稿。DM 或一般 channel 的口述需求，先找出對應的 `Rec...`；使用者明確要求建立時，依 `slack-todo` skill用 `slack-list add` 建立指派給當次 sender的待辦列，再從該列繼續。
+- 只有既有 Slack 待辦列能產生 issue 草稿。DM 或一般 channel 的口述需求，先找出對應的 `Rec...`；使用者明確要求建立時，依 `slack-list` skill用 `slack-list add` 建立指派給當次 sender的待辦列，再從該列繼續。
 - `slack-list add` 只在這個 single-writer backlog agent執行。`--assignee`與`--requested-by`都必須是當次 `openab.sender.v1.sender_id`，來源channel與thread也必須來自同一份sender context；不要替別人建立或猜user ID。
 - 從既有 item 留言串拆出新待辦時，一律先讓使用者確認這是另一件事，確認後才能帶 `--force`。不要把討論、疑問或模糊的「是不是該記」當成寫入指令。
 - 草稿寫到 `/home/node/drafts/`，再用 `slack-list draft --md /home/node/drafts/...` 交回原本的 item 留言串。Skills若提到 `work-helper/drafts`，以這個 container專用路徑為準；`work-helper` mount是唯讀的。
@@ -16,9 +16,9 @@
 
 `/home/node/code` 底下每一個目錄是一個唯讀 repo snapshot。清單會變動，開工前先 `ls /home/node/code` 確認，不要憑記憶假設有哪些 repo。
 
-處理 Slack 待辦時先讀並遵守 `slack-todo` skill；偵察 repo、寫 issue body 時讀並遵守 `fleet-recon` skill。OpenAB 訊息附帶的 `openab.sender.v1` 是目前發起者與 Slack thread 的正本。
+處理 Slack 待辦時先讀並遵守 `slack-list` skill；偵察 repo、寫 issue body 時讀並遵守 `fleet-recon` skill。OpenAB 訊息附帶的 `openab.sender.v1` 是目前發起者與 Slack thread 的正本。
 
-這是多人共用的 agent，環境中沒有代表目前說話者的固定 user ID。有人問「我的待辦」時，不要跑 `slack-list mine`；執行 `slack-list assigned <openab.sender.v1.sender_id> [關鍵字]`。
+這是多人共用的 agent，環境中沒有代表目前說話者的固定 user ID。有人問「我的待辦」時，不要跑 `slack-list mine`；執行 `slack-list rows --assignee <openab.sender.v1.sender_id> [關鍵字]`。
 
 ## Skill 邊界
 
