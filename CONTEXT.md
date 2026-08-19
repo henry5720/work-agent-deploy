@@ -24,12 +24,16 @@ _Avoid_: allowed channel、監聽範圍
 供 backlog agent 偵察的唯讀 repo 視圖。它代表某個基準 branch 最近一次同步成功的內容，不是開發中的 checkout。
 _Avoid_: clone、worktree、工作目錄
 
+**deployment host**:
+執行 backlog agent container、並持有 snapshot private key 與 Slack secrets 的實體主機。它本身不是 container，也不在任何虛擬化層之內。
+_Avoid_: Incus instance、宿主、伺服器
+
 **snapshot 同步者**:
-唯一能從 GitHub 更新 repo snapshot 的 host 身分。它不進入 backlog agent 的執行環境。
+唯一能從 GitHub 更新 repo snapshot、並維護 repo 索引的 host 身分。它不進入 backlog agent 的執行環境。
 _Avoid_: agent GitHub 帳號、container credential
 
 **repo 索引**:
-CodeGraph 為每個 repo snapshot 建立的符號與呼叫關係資料庫。它是 backlog agent 查現況時的第一手工具，由 deployment host 每小時重建；agent 只能查詢，不能重建。它可寫，但不屬於 repo 內容。
+CodeGraph 為每個 repo snapshot 建立的符號與呼叫關係資料庫，是 backlog agent 查現況的第一手依據。它由 snapshot 同步者維護，不屬於 repo 內容。
 _Avoid_: 快取、cache、資料庫
 
 **草稿交付**:

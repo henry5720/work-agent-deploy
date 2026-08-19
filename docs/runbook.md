@@ -90,9 +90,9 @@ Root `.env` 只給 Compose用（snapshot root與 uid）；`env/openab.env` 才�
 在 Slack確認：
 
 1. DM詢問一個 repo問題。
-2. 在 `#你為什麼不問問神奇海螺ㄋ` @ bot建立一筆實際要保留的待辦，確認指派給sender並保存來源。
+2. 在 `#你為什麼不問問神奇海螺ㄋ` @ backlog agent建立一筆實際要保留的待辦，確認指派給sender並保存來源。
 3. 再次要求建立同名待辦，確認沒有新增第二列。
-4. 在待辦列的 item留言串 @ bot，確認它能找到正確的 `Rec...`。
+4. 在待辦列的 item留言串 @ backlog agent，確認它能找到正確的 `Rec...`。
 
 停止 local instance：
 
