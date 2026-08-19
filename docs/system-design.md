@@ -51,6 +51,8 @@ Deployment host就是實體host，Compose以維護者自己的帳號執行。第
 
 只有 `config/openab.toml` 明列的 Slack user ID能驅動 agent。OpenAB `0.10.0-beta.3` 會把 channel allowlist也套到 DM channel ID，而 DM ID事前未知，因此 channel gate保持開放，實際 channel邊界由「只把 app 邀進上述兩個 channel」維持。新增 app所在 channel等於擴大互動入口，必須當成權限變更 review。
 
+**已知缺口**：實際部署的 bot token 帶有 `chat:write.public`、`channels:manage`、`groups:write.invites` 等遠多於 [`runbook.md`](runbook.md) 所列的 scope，其中 `chat:write.public` 讓 app 不必被邀請就能貼文到任何公開 channel，「靠邀請維持 channel 邊界」因此不成立。要讓這條邊界成立必須移除多餘 scope 並重新安裝 app（token 會換一組）。
+
 所有授權使用者的遠端能力相同。核准草稿不代表負責實作，也不會讓核准者取得 GitHub credential。
 
 ## Repo Snapshots
@@ -120,6 +122,7 @@ Runtime或部署故障造成工具不能執行時，backlog agent只告知哪項
 ## 明確不做
 
 - 不把 GitHub token、SSH key或 Docker socket放進 container。
+- 不使用 claude.ai 的 MCP connectors。它們跟著登入帳號同步進 container，用的是該帳號的第三方身分（Slack、Gmail、Drive…），不受這個 agent 的 bot scopes 與 channel 邊界約束。由 `managed-claude-settings.json` 的 `disableClaudeAiConnectors` 關閉。
 - 不讓 backlog agent clone、fetch、建立 branch/worktree、commit或 push。
 - 不讓 backlog agent執行 `slack-list ready` 或宣告驗收。
 - 不自動把草稿發布成 GitHub issue。

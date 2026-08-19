@@ -50,6 +50,7 @@ grep -q '建立指派給自己的待辦' "$ROOT/config/slack-home.json"
 grep -Fq '不要執行 `fleet-worktree`' "$ROOT/agents/CLAUDE.md"
 grep -Fq 'git show origin/<branch>:<path>' "$ROOT/agents/CLAUDE.md"
 grep -Fq '不要 `git checkout` 或 `git switch`' "$ROOT/agents/CLAUDE.md"
+python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); assert c["disableClaudeAiConnectors"] is True' "$ROOT/managed-claude-settings.json"
 grep -Fq 'Bash(git checkout*)' "$ROOT/managed-claude-settings.json"
 grep -Fq 'Bash(git switch*)' "$ROOT/managed-claude-settings.json"
 

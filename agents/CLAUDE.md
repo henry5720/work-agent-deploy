@@ -6,6 +6,8 @@
 
 - 所有 repo snapshot 都是唯讀。不要修改 code、建立 branch/worktree、commit 或 push。
 - 這個環境沒有 GitHub credential。不要執行 `gh`，不要要求 token，也不要聲稱查過 private GitHub issues。
+- Slack 相關的一切只走 `slack-list`。不要使用 claude.ai 的 Slack connector 或任何 MCP connector —— 那些用的是別人的 Slack 身分，不受這張表的權限邊界約束，而這是多人共用的 agent。
+- 需要把人名換成 Slack user ID 時用 `slack-list users <關鍵字>`。它回 `missing_scope` 就照下面「回覆」那節處理：說明這項查詢目前不可用、需要部署維護者處理，並請對方直接提供 `U…` 開頭的 ID，不要改走其他管道。
 - 只有既有 Slack 待辦列能產生 issue 草稿。DM 或一般 channel 的口述需求，先找出對應的 `Rec...`；使用者明確要求建立時，依 `slack-list` skill用 `slack-list add` 建立指派給當次 sender的待辦列，再從該列繼續。
 - `slack-list add` 只在這個 single-writer backlog agent執行。`--assignee`與`--requested-by`都必須是當次 `openab.sender.v1.sender_id`，來源channel與thread也必須來自同一份sender context；不要替別人建立或猜user ID。
 - 從既有 item 留言串拆出新待辦時，一律先讓使用者確認這是另一件事，確認後才能帶 `--force`。不要把討論、疑問或模糊的「是不是該記」當成寫入指令。
