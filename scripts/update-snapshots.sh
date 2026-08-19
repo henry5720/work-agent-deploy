@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+REPO_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 ROOT=${SNAPSHOT_ROOT:-${HOME:?HOME must be set}/work-agent-snapshots}
-CONFIG=${REPOS_CONFIG:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/config/repos.conf}
+INDEX_ROOT=$ROOT/.index
+CONFIG=${REPOS_CONFIG:-$REPO_DIR/config/repos.conf}
 SSH_KEY=${GITHUB_SSH_KEY:-${HOME:?HOME must be set}/.ssh/work-agent-github}
 STATE_DIR=${XDG_STATE_HOME:-$HOME/.local/state}/work-agent
 LOCK=${SNAPSHOT_LOCK:-$STATE_DIR/snapshots.lock}
@@ -30,10 +32,11 @@ if [[ ! -r "$CONFIG" ]]; then
   exit 1
 fi
 
-mkdir -p "$ROOT"
+mkdir -p "$ROOT" "$INDEX_ROOT"
 exec 9>"$LOCK"
 flock -n 9 || exit 0
 
+indexed=()
 export GIT_SSH_COMMAND="ssh -i $SSH_KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
 
 while IFS='|' read -r name url branch; do
@@ -54,5 +57,35 @@ while IFS='|' read -r name url branch; do
   git -C "$target" checkout -B "$branch" "origin/$branch"
   git -C "$target" reset --hard "origin/$branch"
   git -C "$target" clean -ffd
+
+  # The CodeGraph index must be writable, but the snapshot is mounted read-only.
+  # A relative symlink into $INDEX_ROOT keeps the index outside the read-only
+  # tree while leaving it where CodeGraph expects it. Excluding it here (not via
+  # a host-wide gitignore) keeps `clean -ffd` and `status --porcelain` correct
+  # regardless of the host's dotfiles. The pattern has no trailing slash because
+  # Git sees a symlink, not a directory.
+  mkdir -p "$INDEX_ROOT/$name" "$target/.git/info"
+  [[ -L "$target/.codegraph" ]] || ln -sfn "../.index/$name" "$target/.codegraph"
+  grep -qxF '.codegraph' "$target/.git/info/exclude" 2>/dev/null \
+    || printf '.codegraph\n' >> "$target/.git/info/exclude"
+
+  indexed+=("$name")
   printf '%-20s %s %s\n' "$name" "$branch" "$(git -C "$target" rev-parse --short HEAD)"
 done < "$CONFIG"
+
+# Build the indexes with the runtime image so the host needs no Node toolchain.
+# Before the first `deploy.sh` the image does not exist yet; that is not fatal.
+if [[ ${#indexed[@]} -gt 0 ]]; then
+  script=""
+  for name in "${indexed[@]}"; do
+    script+="if [ -s /home/node/code/.index/$name/codegraph.db ];"
+    script+=" then codegraph sync /home/node/code/$name;"
+    script+=" else codegraph init /home/node/code/$name; fi; "
+  done
+  if SNAPSHOT_ROOT="$ROOT" docker compose -f "$REPO_DIR/compose.yaml" run --rm -T --no-deps \
+      --entrypoint sh backlog-agent -c "$script"; then
+    printf 'CodeGraph index updated for %d repos\n' "${#indexed[@]}"
+  else
+    printf 'CodeGraph index skipped (runtime image not built yet?)\n' >&2
+  fi
+fi

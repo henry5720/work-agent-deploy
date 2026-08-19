@@ -10,6 +10,7 @@ USER root
 RUN apt-get update \
     && apt-get install -y --no-install-recommends python3 \
     && rm -rf /var/lib/apt/lists/*
+RUN npm i -g @colbymchenry/codegraph@1.5.0
 RUN if [ "$HOST_GID" != "1000" ]; then groupmod -g "$HOST_GID" node; fi \
     && if [ "$HOST_UID" != "1000" ]; then usermod -u "$HOST_UID" -g "$HOST_GID" node; fi \
     && chown -R "$HOST_UID:$HOST_GID" /home/node /usr/local/bin/openab

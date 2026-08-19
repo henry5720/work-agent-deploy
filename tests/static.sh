@@ -65,6 +65,17 @@ if grep -q -E '/home/node/\.claude/skills/[A-Za-z0-9._-]+' "$ROOT/compose.yaml";
   printf 'compose.yaml must not mount skills one by one.\n' >&2
   exit 1
 fi
+# CodeGraph: writable index outside the read-only tree, agent may only query.
+grep -Fq '${SNAPSHOT_ROOT:?set SNAPSHOT_ROOT in .env}/.index:/home/node/code/.index:z' "$ROOT/compose.yaml"
+grep -q 'CODEGRAPH_TELEMETRY: "0"' "$ROOT/compose.yaml"
+grep -q 'npm i -g @colbymchenry/codegraph@' "$ROOT/Dockerfile"
+grep -Fq 'ln -sfn "../.index/$name" "$target/.codegraph"' "$ROOT/scripts/update-snapshots.sh"
+grep -Fq "grep -qxF '.codegraph'" "$ROOT/scripts/update-snapshots.sh"
+grep -Fq 'codegraph explore' "$ROOT/agents/CLAUDE.md"
+for sub in init index sync uninit daemon; do
+  grep -Fq "Bash(codegraph $sub*)" "$ROOT/managed-claude-settings.json"
+done
+
 awk -F'|' '/^[^#]/ && NF { if ($1 !~ /^[A-Za-z0-9._-]+$/ || $2 !~ /^git@github\.com:/ || $3 !~ /^[A-Za-z0-9._\/-]+$/) exit 1 }' "$ROOT/config/repos.conf"
 
 grep -q ':ro' "$ROOT/compose.yaml"

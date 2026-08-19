@@ -13,7 +13,12 @@
       "Bash(git commit*)",
       "Bash(git checkout*)",
       "Bash(git switch*)",
-      "Bash(git worktree*)"
+      "Bash(git worktree*)",
+      "Bash(codegraph init*)",
+      "Bash(codegraph index*)",
+      "Bash(codegraph sync*)",
+      "Bash(codegraph uninit*)",
+      "Bash(codegraph daemon*)"
     ]
   }
 }

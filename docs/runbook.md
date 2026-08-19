@@ -155,7 +155,8 @@ docker compose exec backlog-agent sh -lc \
    test -d /home/node/.claude/skills/slack-todo &&
    test ! -e /home/node/.ssh &&
    test ! -e /home/node/.config/gh &&
-   ! gh auth status >/dev/null 2>&1'
+   ! gh auth status >/dev/null 2>&1 &&
+   codegraph explore boot -p /home/node/code/work-helper >/dev/null'
 ```
 
 `test -w` 這幾項是SELinux label與uid都正確才會過的，Compose render成功不代表通過。
@@ -192,6 +193,10 @@ crontab -l | grep work-agent-snapshots
 tail -n 50 "${XDG_STATE_HOME:-$HOME/.local/state}/work-agent/snapshots.log"
 ./scripts/update-snapshots.sh
 ```
+
+`update-snapshots.sh` 同步完會用 runtime image重建 CodeGraph索引，所以 host不需要安裝 Node。
+索引放在 `$SNAPSHOT_ROOT/.index/<repo>`，每個 snapshot內的 `.codegraph` 是指過去的相對 symlink。
+第一次部署時 image還沒 build，那一輪的索引會被跳過並印出訊息，`deploy.sh` 之後再跑一次同步即可。
 
 停止 agent：
 

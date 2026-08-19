@@ -16,6 +16,7 @@ services:
         required: false
     environment:
       CLAUDE_CONFIG_DIR: /home/node/.claude
+      CODEGRAPH_TELEMETRY: "0"
     read_only: true
     security_opt:
       - no-new-privileges:true
@@ -39,6 +40,10 @@ services:
       # config/repos.conf. Skills register from the work-helper snapshot.
       - ${SNAPSHOT_ROOT:?set SNAPSHOT_ROOT in .env}:/home/node/code:ro,z
       - ${SNAPSHOT_ROOT:?set SNAPSHOT_ROOT in .env}/work-helper/skills:/home/node/.claude/skills:ro,z
+      # CodeGraph indexes are SQLite in WAL mode, so they need a writable path.
+      # Each snapshot's .codegraph is a relative symlink into this one directory,
+      # which keeps repo source read-only and adding a repo free of Compose edits.
+      - ${SNAPSHOT_ROOT:?set SNAPSHOT_ROOT in .env}/.index:/home/node/code/.index:z
 
 volumes:
   claude-credentials:

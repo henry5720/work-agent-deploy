@@ -61,6 +61,8 @@ Host每小時 fetch所有 remote refs，再把每個 working snapshot reset到�
 
 Snapshot代表最近一次同步成功的狀態，不保證和 GitHub當下完全同步。偵察結論若依賴剛 push的 commit，必須先確認 snapshot同步完成。
 
+backlog agent查符號與影響範圍時用CodeGraph索引，找字串才用grep。索引內容對應snapshot當下的基準branch。
+
 Working tree停在基準 branch，但 `.git`內保有完整的 `origin/*` refs。backlog agent可以用 `git show origin/<branch>:<path>` 這類唯讀方式讀還沒合併的 branch，不能 checkout；引用時必須標明 branch與 commit。
 
 ## 待辦流程
@@ -110,7 +112,8 @@ Runtime或部署故障造成工具不能執行時，backlog agent只告知哪項
 - Bind mount帶 `:z`，SELinux enforcing的 host才讀得到；`z` 會 relabel來源目錄，所以 snapshot root是專用目錄。
 - Skills由 `work-helper/skills` 整個目錄掛成 `/home/node/.claude/skills`。work-helper `main` 上的新 skill會在下次同步後自動生效，不需要改這個 repo。
 - OpenAB state與草稿存在 deployment repo的 Git-ignored `runtime/`，不隨 container重建刪除。
-- Project資料中只有 `/home/node/drafts` 可寫；repo snapshots全部唯讀。
+- Project資料中可寫的只有 `/home/node/drafts` 與 `/home/node/code/.index`；repo源碼全部唯讀。
+- 每個 snapshot 的 `.codegraph` 是指向 `.index/<repo>` 的相對 symlink。CodeGraph索引是WAL模式的SQLite，必須可寫；把它移出唯讀樹讓源碼的唯讀保證維持不變。索引由host每小時用runtime image重建，agent只能查詢。
 - OpenAB image使用固定 multi-arch digest，不跟浮動 tag更新。
 - Runtime image從固定 digest的 OpenAB image建置，只額外提供 `slack-list` 所需的 Python 3。
 

@@ -27,6 +27,18 @@
 - **不要執行 `fleet-worktree`。** 它需要 herdr、`git worktree` 與 `gh`，這個環境三樣都沒有。有人要求派工或接單時，回覆這件事要在 local 做，不要嘗試變通。
 - `daily-worklog` 只看得到 snapshot 的基準 branch，跑出來的結果和使用者在自己機器上跑的不一樣。要用之前先講明這個限制。
 
+## 找 code 先用 CodeGraph
+
+每個 snapshot 都有預先建好的 CodeGraph 索引。查符號、呼叫關係與影響範圍用它，比 grep 準也省 context：
+
+- `codegraph explore "<問題或符號>" -p /home/node/code/<repo>`
+- `codegraph node <symbol> -p /home/node/code/<repo>`
+- `codegraph query <search> -p /home/node/code/<repo>`
+
+`explore` 回傳的原始碼是該次呼叫從磁碟重讀的，不要再 Read 一次同一個檔案。找字串（設定值、訊息文字、註解）仍然用 grep；CodeGraph 找的是符號與關係。
+
+索引由 host 每小時維護。不要執行 `codegraph init`、`index`、`sync`、`uninit` 或 `daemon`。索引和 snapshot 對不上時，說明目前查詢不可用並指出需要部署維護者處理，不要自己重建。
+
 ## 讀還沒合併的 branch
 
 snapshot 的 working tree 停在基準 branch，但 `.git` 內有完整的 `origin/*` refs，所以在基準 branch 上找不到某個功能時，不代表它不存在。

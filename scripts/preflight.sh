@@ -39,6 +39,10 @@ grep -q '^SLACK_APP_TOKEN=xapp-' "$ENV_FILE" || fail "SLACK_APP_TOKEN must start
 # snapshots may live in it.
 [[ -d "$SNAPSHOT_ROOT" ]] || fail "snapshot root missing: $SNAPSHOT_ROOT (run scripts/install-sync-cron.sh)"
 [[ -d "$SNAPSHOT_ROOT/work-helper/skills" ]] || fail "missing $SNAPSHOT_ROOT/work-helper/skills (skills are mounted from there)"
+# Docker would create a missing bind source as root and the container could not
+# write the index, so fail loudly instead.
+[[ -d "$SNAPSHOT_ROOT/.index" ]] || fail "missing $SNAPSHOT_ROOT/.index (run scripts/update-snapshots.sh)"
+[[ $(stat -c '%u:%g' "$SNAPSHOT_ROOT/.index") == "$HOST_UID:$HOST_GID" ]] || fail "$SNAPSHOT_ROOT/.index must be owned by $HOST_UID:$HOST_GID"
 
 declare -A expected=()
 while IFS='|' read -r name _ branch; do
