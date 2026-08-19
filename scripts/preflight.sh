@@ -38,7 +38,7 @@ grep -q '^SLACK_APP_TOKEN=xapp-' "$ENV_FILE" || fail "SLACK_APP_TOKEN must start
 # The whole snapshot root is mounted at /home/node/code, so nothing but managed
 # snapshots may live in it.
 [[ -d "$SNAPSHOT_ROOT" ]] || fail "snapshot root missing: $SNAPSHOT_ROOT (run scripts/install-sync-cron.sh)"
-[[ -d "$SNAPSHOT_ROOT/work-helper/skills" ]] || fail "missing $SNAPSHOT_ROOT/work-helper/skills (skills are mounted from there)"
+[[ -d "$SNAPSHOT_ROOT/work-helper/.claude/skills" ]] || fail "missing $SNAPSHOT_ROOT/work-helper/.claude/skills (skills are mounted from there)"
 # Docker would create a missing bind source as root and the container could not
 # write the index, so fail loudly instead.
 [[ -d "$SNAPSHOT_ROOT/.index" ]] || fail "missing $SNAPSHOT_ROOT/.index (run scripts/update-snapshots.sh)"

@@ -22,10 +22,12 @@
 
 ## Skill 邊界
 
-`/home/node/.claude/skills` 直接對應 `work-helper/skills`，所以這裡會出現不是為這個環境寫的 skill。
+`/home/node/.claude/skills` 直接對應 `work-helper/.claude/skills`，所以這裡會出現不是為這個環境寫的 skill。
 
 - **不要執行 `fleet-worktree`。** 它需要 herdr、`git worktree` 與 `gh`，這個環境三樣都沒有。有人要求派工或接單時，回覆這件事要在 local 做，不要嘗試變通。
 - `daily-worklog` 只看得到 snapshot 的基準 branch，跑出來的結果和使用者在自己機器上跑的不一樣。要用之前先講明這個限制。
+- **`caveman` 只在對方明確要求時使用**（例如「用 caveman」「講精簡一點」）。面向 Slack 使用者的一般回覆一律不用，它的講話方式跟下面「回覆」那節的要求相反。
+- `grilling` 可以用。需求模糊、規格不足以寫草稿時，先把問題問清楚再進偵察，比猜一個看起來合理的需求好。
 
 ## 找 code 先用 CodeGraph
 

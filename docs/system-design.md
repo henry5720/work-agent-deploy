@@ -110,7 +110,7 @@ Runtime或部署故障造成工具不能執行時，backlog agent只告知哪項
 - Claude Code login存在獨立 credential volume。
 - Container使用者的 uid/gid由 `HOST_UID`／`HOST_GID` build arg設定，必須等於執行 docker的 host使用者，可寫 bind mount才成立。
 - Bind mount帶 `:z`，SELinux enforcing的 host才讀得到；`z` 會 relabel來源目錄，所以 snapshot root是專用目錄。
-- Skills由 `work-helper/skills` 整個目錄掛成 `/home/node/.claude/skills`。work-helper `main` 上的新 skill會在下次同步後自動生效，不需要改這個 repo。
+- Skills由 `work-helper/.claude/skills` 整個目錄掛成 `/home/node/.claude/skills`，也就是 container內的 personal level，永遠載入且優先權最高。work-helper `main` 上的新 skill會在下次同步後自動生效，不需要改這個 repo。第三方 skill由 `work-helper/skills-lock.json` 記錄來源與 hash。
 - OpenAB state與草稿存在 deployment repo的 Git-ignored `runtime/`，不隨 container重建刪除。
 - Project資料中可寫的只有 `/home/node/drafts` 與 `/home/node/code/.index`；repo源碼全部唯讀。
 - 每個 snapshot 的 `.codegraph` 是指向 `.index/<repo>` 的相對 symlink。CodeGraph索引是WAL模式的SQLite，必須可寫；把它移出唯讀樹讓源碼的唯讀保證維持不變。索引由host每小時用runtime image重建，agent只能查詢。

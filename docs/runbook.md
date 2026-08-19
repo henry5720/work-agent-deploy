@@ -208,13 +208,17 @@ docker compose down
 
 ### 更新或新增 Skill
 
-`/home/node/.claude/skills` 是 `work-helper/skills` 整個目錄的 read-only mount。修改或新增 skill只要 commit並 push到
+`/home/node/.claude/skills` 是 `work-helper/.claude/skills` 整個目錄的 read-only mount。修改或新增 skill只要 commit並 push到
 `work-helper` 的 `main`，下一次同步（每小時）之後就會生效，**不需要改這個 repo，也不需要重新 build或 deploy**。
 
 要立即生效就在 host上執行 `./scripts/update-snapshots.sh`。
 
-唯一需要改這個 repo的情況：新 skill在這個環境跑不動（需要 `gh`、`git worktree`、可寫 repo或 local 專用工具）。
-那要在 `agents/CLAUDE.md` 的「Skill 邊界」寫明不要執行它以及該怎麼回覆，否則 agent會在 Slack上嘗試然後失敗。
+第三方 skill在 work-helper用 `npx skills add <repo> -s <skill> -a claude-code --copy` 安裝，來源與 hash記在
+`work-helper/skills-lock.json`，更新用 `npx skills update -p`。**一定要 `--copy`**：預設的 symlink會指到
+mount範圍以外，在 container內是斷的。
+
+唯一需要改這個 repo的情況：新 skill在這個環境跑不動（需要 `gh`、`git worktree`、可寫 repo或 local 專用工具），
+或它的行為會撞到 Slack回覆規則。那要在 `agents/CLAUDE.md` 的「Skill 邊界」寫明，否則 agent會在 Slack上嘗試然後失敗。
 
 已啟動的Claude session可能已把舊skill內容讀進context。同步後使用新的Slack thread或等待session回收再驗證，不用以舊session判斷同步失敗。
 

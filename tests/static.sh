@@ -56,7 +56,7 @@ grep -Fq 'Bash(git switch*)' "$ROOT/managed-claude-settings.json"
 # One mount for the whole snapshot root, one for the skills directory. Adding a
 # repo must not require touching compose.yaml.
 grep -Fq '${SNAPSHOT_ROOT:?set SNAPSHOT_ROOT in .env}:/home/node/code:ro,z' "$ROOT/compose.yaml"
-grep -Fq '${SNAPSHOT_ROOT:?set SNAPSHOT_ROOT in .env}/work-helper/skills:/home/node/.claude/skills:ro,z' "$ROOT/compose.yaml"
+grep -Fq '${SNAPSHOT_ROOT:?set SNAPSHOT_ROOT in .env}/work-helper/.claude/skills:/home/node/.claude/skills:ro,z' "$ROOT/compose.yaml"
 if grep -q -E '/home/node/code/[A-Za-z0-9._-]+:ro' "$ROOT/compose.yaml"; then
   printf 'compose.yaml must not mount repos one by one.\n' >&2
   exit 1
