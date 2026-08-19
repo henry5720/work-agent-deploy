@@ -154,10 +154,14 @@ docker compose exec backlog-agent sh -lc \
    test ! -w /home/node/code/teamsync-backend &&
    test -d /home/node/.claude/skills/slack-todo &&
    test ! -e /home/node/.ssh &&
-   ! command -v gh'
+   test ! -e /home/node/.config/gh &&
+   ! gh auth status >/dev/null 2>&1'
 ```
 
 `test -w` 這幾項是SELinux label與uid都正確才會過的，Compose render成功不代表通過。
+
+`gh` 這個 binary本身存在於 OpenAB base image內，拿掉它不是這裡的邊界。邊界是它沒有任何憑證，
+加上 `managed-claude-settings.json` 的 `Bash(gh *)` deny規則。上面驗的是憑證，不是 binary。
 
 接著重做 local段落的 Slack測試，再確認未授權帳號的訊息不會被處理。
 
