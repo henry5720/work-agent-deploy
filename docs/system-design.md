@@ -2,7 +2,7 @@
 
 ## 目標
 
-在 Slack 提供一個多人共用的 backlog agent，讓授權使用者能直接查待辦、讀 repo、偵察既有待辦列並取得可 review 的 issue 草稿，不必經由另一個人轉述。
+在 Slack 提供一個多人共用的 backlog agent，讓授權使用者能直接建立指派給自己的待辦、查待辦、讀 repo、偵察既有待辦列並取得可 review 的 issue 草稿，不必經由另一個人轉述。
 
 這個 agent 停在 backlog 層。它不修改產品 code、不建立 GitHub issue、不 push，也不通知 PM 驗收。
 
@@ -11,7 +11,7 @@
 | 角色 | 能做什麼 | 不能做什麼 |
 |---|---|---|
 | 授權使用者 | 從 Slack 發問、要求偵察、核准或退回草稿 | 透過遠端 agent 修改 code或取得 GitHub credential |
-| backlog agent | 讀 Slack 待辦與 repo snapshot、交付草稿 | 實作、建立 issue、查 private issues、回報驗收 |
+| backlog agent | 建立 self-assigned Slack 待辦、讀待辦與 repo snapshot、交付草稿 | 實作、建立 issue、查 private issues、回報驗收 |
 | snapshot 同步者 | 在 deployment host 從 GitHub 更新 snapshots | 進入 container或代表 agent發布內容 |
 | 實作 agent | 在 local 建 issue、修改 code、測試、push、回報驗收 | 假裝遠端草稿已核准或已實作 |
 
@@ -79,7 +79,13 @@ Snapshot代表最近一次同步成功的狀態，不保證和 GitHub當下完�
 
 ### 從 DM 或一般 channel 開始
 
-口述需求不能直接變成草稿。backlog agent必須先找到對應的既有待辦列；找不到時，請使用者先建立待辦列。這條限制確保每份草稿都有 Slack來源指紋與回報對象。
+口述需求不能直接變成草稿。backlog agent先找對應的既有待辦列；找不到而使用者明確要求建立時，
+用`openab.sender.v1`的sender、channel與thread context建立一筆指派給sender的待辦列。標題由agent濃縮時先確認，
+使用者明確提供標題時可直接建立；同名active列存在時加入既有assignees，不建立第二列。
+
+`slack-list add`只由這個OpenAB instance執行，local implementation agent不執行，讓同一runtime的process lock
+序列化查重與寫入。建立後的來源與回報設定留在原生item留言串；來源註記失敗時保留已建立的列並明確回報，
+不直接重試。待辦列存在後才能進入偵察與草稿流程，確保每份草稿都有Slack來源指紋與回報規則。
 
 ### 「我的待辦」
 
@@ -121,10 +127,11 @@ Runtime或部署故障造成工具不能執行時，backlog agent只告知哪項
 
 1. 授權使用者能從 DM查 repo；未授權使用者的訊息被拒絕。
 2. 授權使用者能在指定 private channel @ agent，後續在同一 thread繼續對話。
-3. 在待辦列的 item 留言串 @ agent時，agent能反查正確 `Rec...`，不要求人再貼 ID。
-4. 偵察完成後，item 留言串收到 Markdown草稿與人工 GitHub連結，待辦狀態不變。
-5. Container內四個 snapshots不可寫，drafts可寫，且沒有可用的 GitHub auth或 SSH key。
-6. Host同步後，所有新 sessions讀到同一個基準 branch版本。
+3. 授權使用者從DM或指定private channel明確建立待辦時，新列指派給sender並保存來源；同名active列不重複建立。
+4. 在待辦列的 item 留言串 @ agent時，agent能反查正確 `Rec...`，不要求人再貼 ID。
+5. 偵察完成後，item 留言串收到 Markdown草稿與人工 GitHub連結，待辦狀態不變。
+6. Container內四個 snapshots不可寫，drafts可寫，且沒有可用的 GitHub auth或 SSH key。
+7. Host同步後，所有新 sessions讀到同一個基準 branch版本。
 
 ## 人工前置作業
 

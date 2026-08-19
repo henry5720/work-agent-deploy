@@ -40,6 +40,8 @@ grep -q 'exec -T backlog-agent python3 --version' "$ROOT/scripts/deploy.sh"
 grep -q 'slack-list --help' "$ROOT/scripts/deploy.sh"
 grep -q 'test -w /home/node/.openab' "$ROOT/scripts/deploy.sh"
 grep -q "must be owned by container user 1000:1000" "$ROOT/scripts/preflight.sh"
+grep -q 'slack-list add' "$ROOT/agents/CLAUDE.md"
+grep -q '建立指派給自己的待辦' "$ROOT/config/slack-home.json"
 grep -q ':ro' "$ROOT/compose.yaml"
 grep -Fq './agents/CLAUDE.md:/home/node/CLAUDE.md:ro' "$ROOT/compose.yaml"
 if grep -Fq -- '- ./CLAUDE.md:/home/node/CLAUDE.md' "$ROOT/compose.yaml"; then

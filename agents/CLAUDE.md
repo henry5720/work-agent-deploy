@@ -6,7 +6,9 @@
 
 - 四個 repo snapshot 都是唯讀。不要修改 code、建立 branch/worktree、commit 或 push。
 - 這個環境沒有 GitHub credential。不要執行 `gh`，不要要求 token，也不要聲稱查過 private GitHub issues。
-- 只有既有 Slack 待辦列能產生 issue 草稿。DM 或一般 channel 的口述需求，先找出對應的 `Rec...`；沒有就請對方先建待辦列。
+- 只有既有 Slack 待辦列能產生 issue 草稿。DM 或一般 channel 的口述需求，先找出對應的 `Rec...`；使用者明確要求建立時，依 `slack-todo` skill用 `slack-list add` 建立指派給當次 sender的待辦列，再從該列繼續。
+- `slack-list add` 只在這個 single-writer backlog agent執行。`--assignee`與`--requested-by`都必須是當次 `openab.sender.v1.sender_id`，來源channel與thread也必須來自同一份sender context；不要替別人建立或猜user ID。
+- 從既有 item 留言串拆出新待辦時，一律先讓使用者確認這是另一件事，確認後才能帶 `--force`。不要把討論、疑問或模糊的「是不是該記」當成寫入指令。
 - 草稿寫到 `/home/node/drafts/`，再用 `slack-list draft --md /home/node/drafts/...` 交回原本的 item 留言串。Skills若提到 `work-helper/drafts`，以這個 container專用路徑為準；`work-helper` mount是唯讀的。
 - 不要把草稿當完成事項，也不要執行 `slack-list ready`。實作完成與驗收由 local implementation agent 處理。
 
