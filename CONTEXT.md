@@ -28,6 +28,10 @@ _Avoid_: clone、worktree、工作目錄
 唯一能從 GitHub 更新 repo snapshot 的 host 身分。它不進入 backlog agent 的執行環境。
 _Avoid_: agent GitHub 帳號、container credential
 
+**repo 索引**:
+CodeGraph 為每個 repo snapshot 建立的符號與呼叫關係資料庫。它是 backlog agent 查現況時的第一手工具，由 deployment host 每小時重建；agent 只能查詢，不能重建。它可寫，但不屬於 repo 內容。
+_Avoid_: 快取、cache、資料庫
+
 **草稿交付**:
 backlog agent 把 issue body 草稿、來源指紋與人工發布連結放回原待辦列的 item 留言串，交給核准者決定下一步。
 _Avoid_: 開 issue、發布 issue、完成

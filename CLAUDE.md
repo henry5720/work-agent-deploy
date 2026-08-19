@@ -26,6 +26,7 @@
 | Slack allowlist、session與 agent process | `config/openab.toml` |
 | Snapshot remote與基準 branch | `config/repos.conf` |
 | Backlog agent行為 | `agents/CLAUDE.md` |
+| Backlog agent可用的 skill | `work-helper/.claude/skills`（不在這個 repo） |
 | Deployment host操作步驟 | `docs/runbook.md` |
 
 同一個值若必須出現在文件和設定，設定是機器正本；文件要連回設定，不要另造可獨立修改的清單。
@@ -33,7 +34,7 @@
 ## 不可破壞的邊界
 
 - Container不得取得 GitHub token、SSH key、Docker socket或可寫 repo checkout。
-- Snapshot root以單一 mount掛成 `/home/node/code`，必須維持 read-only；只有 drafts是可寫的 project資料。
+- Snapshot root以單一 mount掛成 `/home/node/code`，必須維持 read-only。Project資料中只有 `/home/node/drafts` 與 `/home/node/code/.index`（CodeGraph索引）可寫；repo源碼永遠不可寫。索引由 host維護，agent只能查詢。
 - `WORK_HELPER_ISSUE_MODE` 必須是 `manual`。遠端 agent不建立 GitHub issue，也不執行驗收回報。
 - GitHub SSH key只供 deployment host的 snapshot同步使用，不能進 Compose env或 volume。
 - OpenAB image必須固定 immutable digest。升級時先確認新版本 Slack config與 multi-arch manifest，再同時更新 spec和驗證。
