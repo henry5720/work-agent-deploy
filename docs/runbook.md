@@ -152,6 +152,17 @@ docker compose exec backlog-agent sh -lc \
 
 ## 4. 日常操作
 
+### 進入正式環境
+
+Deployment repo在Incus instance內的 `/home/workagent/code/work-agent-deploy`，不會出現在實體host的deployment checkout。從有權管理restricted Incus project的帳號進入：
+
+```bash
+ssh -t <incus-manager> 'incus exec work-agent -- su - workagent'
+cd "$HOME/code/work-agent-deploy"
+```
+
+不要直接在正式環境修改repo檔案。所有設定與文件都先在local修改、commit及push；正式環境只執行`git pull --ff-only`與部署命令。
+
 更新部署：
 
 ```bash
@@ -182,3 +193,60 @@ docker compose down
 ```
 
 不要執行 `docker compose down -v`，它會刪除 Claude login。`runtime/` 不會被 `down` 刪除。
+
+### 更新既有 Skill
+
+`slack-todo`與`fleet-recon`的正本在`work-helper/skills/`。修改後commit並push到`work-helper`的`main`；snapshot timer會在五分鐘內同步到`/srv/work-agent/repos/work-helper`，既有read-only bind mount會直接看到新內容，不需重新build或deploy。
+
+要立即同步：
+
+```bash
+sudo systemctl start "work-agent-snapshots@$(id -un).service"
+sudo journalctl -u "work-agent-snapshots@$(id -un).service" -n 100 --no-pager
+```
+
+已啟動的Claude session可能已把舊skill內容讀進context。同步後使用新的Slack thread或等待session回收再驗證，不用以舊session判斷同步失敗。
+
+### 新增 Skill
+
+新skill先加入`work-helper/skills/<skill-name>/`並push到`main`，再修改這個deployment repo：
+
+| 正本 | 要改什麼 |
+|---|---|
+| `compose.yaml` | 將新skill目錄read-only mount到`/home/node/.claude/skills/<skill-name>` |
+| `agents/CLAUDE.md` | 寫清楚什麼情況使用新skill |
+| `tests/static.sh` | 驗證新mount存在且維持read-only |
+
+新skill不會只因為出現在整份`work-helper` snapshot裡就自動註冊；必須有`/home/node/.claude/skills/`下的獨立mount。修改完成後push deployment repo，進入Incus instance執行：
+
+```bash
+git pull --ff-only
+sudo systemctl start "work-agent-snapshots@$(id -un).service"
+./tests/static.sh
+./scripts/deploy.sh
+```
+
+### 新增唯讀 Repo
+
+新增repo會擴大backlog agent可讀資料的範圍，必須當成能力與權限變更review。同步修改：
+
+| 正本 | 要改什麼 |
+|---|---|
+| `config/repos.conf` | 新增SSH remote與基準branch |
+| `compose.yaml` | 新增指向`/home/node/code/<repo>`的read-only snapshot mount |
+| `config/openab.toml` | 需要簡短workspace名稱時新增alias |
+| `agents/CLAUDE.md` | 加入工作路徑與必要的使用規則 |
+| `docs/system-design.md` | 更新repo snapshots清單與能力邊界 |
+| `tests/static.sh` | 驗證mount、branch及read-only要求 |
+| 本runbook | 更新安全邊界驗證命令 |
+
+Snapshot key對應的GitHub帳號必須先取得新repo的read權限。Push deployment repo後，在Incus instance執行：
+
+```bash
+git pull --ff-only
+sudo systemctl start "work-agent-snapshots@$(id -un).service"
+./scripts/preflight.sh
+./scripts/deploy.sh
+```
+
+最後依「驗證」章節確認所有repo snapshot不可寫、drafts可寫，並從新的Slack thread詢問新repo內容。
