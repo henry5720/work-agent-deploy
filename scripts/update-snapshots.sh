@@ -1,10 +1,25 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT=${SNAPSHOT_ROOT:-/srv/work-agent/repos}
+ROOT=${SNAPSHOT_ROOT:-${HOME:?HOME must be set}/work-agent-snapshots}
 CONFIG=${REPOS_CONFIG:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/config/repos.conf}
 SSH_KEY=${GITHUB_SSH_KEY:-${HOME:?HOME must be set}/.ssh/work-agent-github}
-LOCK=${SNAPSHOT_LOCK:-/run/lock/work-agent-snapshots.lock}
+STATE_DIR=${XDG_STATE_HOME:-$HOME/.local/state}/work-agent
+LOCK=${SNAPSHOT_LOCK:-$STATE_DIR/snapshots.lock}
+LOG=${SNAPSHOT_LOG:-$STATE_DIR/snapshots.log}
+LOG_MAX_BYTES=${SNAPSHOT_LOG_MAX_BYTES:-1048576}
+
+mkdir -p "$STATE_DIR"
+
+# cron has no journald: keep one rotation of our own log, but stay on the
+# terminal when a maintainer runs this by hand.
+if [[ ! -t 1 ]]; then
+  if [[ -f "$LOG" && $(stat -c '%s' "$LOG") -gt $LOG_MAX_BYTES ]]; then
+    mv -f "$LOG" "$LOG.1"
+  fi
+  exec >>"$LOG" 2>&1
+fi
+printf '=== %s\n' "$(date -Is)"
 
 if [[ ! -r "$SSH_KEY" ]]; then
   printf 'Missing readable GitHub SSH key: %s\n' "$SSH_KEY" >&2

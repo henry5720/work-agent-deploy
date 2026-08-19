@@ -1,5 +1,7 @@
 # Run the deployment host inside restricted Incus
 
+**Superseded by [0003](0003-deploy-directly-on-the-fedora-host.md).** 保留原文說明當初為什麼選 Incus。
+
 Backlog agent的 deployment host使用 restricted Incus container，不直接使用實體 host的 Docker。Incus內再執行 systemd snapshot timer與 Compose；GitHub snapshot key、Slack secrets、Claude credential及repo snapshots都只存在Incus邊界內。這增加一層nested Docker與首次網路設定，換到不需給deployment identity實體host的sudo或Docker權限，且Docker邊界失守時仍停在Incus內。
 
 ## Consequences

@@ -22,7 +22,7 @@ Slack 待辦角色如回報對象、核准者、負責人，沿用 `work-helper/
 ```text
 授權使用者
   -> Slack DM / private channel / item 留言串
-    -> restricted Incus deployment host
+    -> deployment host
       -> OpenAB container
         -> Claude Code backlog agent
           -> Slack Lists API
@@ -39,7 +39,7 @@ local 實作 agent
 
 GitHub credential只到 deployment host 與 local 實作環境，不跨進 backlog agent container。詳見 [`adr/0001-github-access-stops-at-the-host-boundary.md`](adr/0001-github-access-stops-at-the-host-boundary.md)。
 
-Deployment host本身是restricted Incus container。實體host不保存Slack secrets、Claude credential、repo snapshots或snapshot private key，也不直接執行OpenAB Compose。詳見 [`adr/0002-run-the-deployment-host-inside-restricted-incus.md`](adr/0002-run-the-deployment-host-inside-restricted-incus.md)。
+Deployment host就是實體host，Compose以維護者自己的帳號執行。第一版曾把它包在restricted Incus instance內，後來因為該帳號本來就在`docker` group而取消。詳見 [`adr/0003-deploy-directly-on-the-fedora-host.md`](adr/0003-deploy-directly-on-the-fedora-host.md)。
 
 ## 互動入口
 
@@ -55,16 +55,13 @@ Deployment host本身是restricted Incus container。實體host不保存Slack se
 
 ## Repo Snapshots
 
-| Snapshot | 基準 branch |
-|---|---|
-| `work-helper` | `main` |
-| `work-docs` | `main` |
-| `teamsync-frontend` | `dev` |
-| `teamsync-backend` | `master` |
+清單的正本是 [`config/repos.conf`](../config/repos.conf)，一行一個 repo。整個 snapshot root以單一 read-only mount掛成 container內的 `/home/node/code`，所以新增 repo只改那一個檔案，不動 Compose。
 
-Host定期 fetch所有 remote refs，再把每個 working snapshot reset到基準 branch。Container以 read-only bind mount看見 snapshots；所有 OpenAB sessions共用同一份內容。
+Host每小時 fetch所有 remote refs，再把每個 working snapshot reset到基準 branch。所有 OpenAB sessions共用同一份內容。
 
 Snapshot代表最近一次同步成功的狀態，不保證和 GitHub當下完全同步。偵察結論若依賴剛 push的 commit，必須先確認 snapshot同步完成。
+
+Working tree停在基準 branch，但 `.git`內保有完整的 `origin/*` refs。backlog agent可以用 `git show origin/<branch>:<path>` 這類唯讀方式讀還沒合併的 branch，不能 checkout；引用時必須標明 branch與 commit。
 
 ## 待辦流程
 
@@ -109,6 +106,9 @@ Runtime或部署故障造成工具不能執行時，backlog agent只告知哪項
 - 一個 OpenAB instance，共用最多 10 個 sessions。
 - 閒置 session 4 小時後回收。
 - Claude Code login存在獨立 credential volume。
+- Container使用者的 uid/gid由 `HOST_UID`／`HOST_GID` build arg設定，必須等於執行 docker的 host使用者，可寫 bind mount才成立。
+- Bind mount帶 `:z`，SELinux enforcing的 host才讀得到；`z` 會 relabel來源目錄，所以 snapshot root是專用目錄。
+- Skills由 `work-helper/skills` 整個目錄掛成 `/home/node/.claude/skills`。work-helper `main` 上的新 skill會在下次同步後自動生效，不需要改這個 repo。
 - OpenAB state與草稿存在 deployment repo的 Git-ignored `runtime/`，不隨 container重建刪除。
 - Project資料中只有 `/home/node/drafts` 可寫；repo snapshots全部唯讀。
 - OpenAB image使用固定 multi-arch digest，不跟浮動 tag更新。
@@ -130,14 +130,14 @@ Runtime或部署故障造成工具不能執行時，backlog agent只告知哪項
 3. 授權使用者從DM或指定private channel明確建立待辦時，新列指派給sender並保存來源；同名active列不重複建立。
 4. 在待辦列的 item 留言串 @ agent時，agent能反查正確 `Rec...`，不要求人再貼 ID。
 5. 偵察完成後，item 留言串收到 Markdown草稿與人工 GitHub連結，待辦狀態不變。
-6. Container內四個 snapshots不可寫，drafts可寫，且沒有可用的 GitHub auth或 SSH key。
+6. Container內所有 snapshots不可寫，drafts可寫，且沒有可用的 GitHub auth或 SSH key。
 7. Host同步後，所有新 sessions讀到同一個基準 branch版本。
 
 ## 人工前置作業
 
 - Slack app重新安裝並取得 `xapp-...`、新 `xoxb-...`。
 - 將 app顯示名稱改為「派大星教授加博士先生」。
-- 把 host專用 GitHub SSH public key加入一個能讀四個 private repos的 GitHub帳號。
+- 把 host專用 GitHub SSH public key加入一個能讀 `config/repos.conf` 內所有 private repos的 GitHub帳號。
 - 在 container內完成 Claude Code subscription login。
 
 實際操作命令見 [`runbook.md`](runbook.md)。

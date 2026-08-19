@@ -5,6 +5,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        HOST_UID: ${HOST_UID:-1000}
+        HOST_GID: ${HOST_GID:-1000}
     image: work-agent-openab:0.10.0-beta.3-python3
     container_name: work-agent
     restart: unless-stopped
@@ -24,19 +27,18 @@ services:
     stop_grace_period: 30s
     tmpfs:
       - /tmp:size=1g,mode=1777
+    # `z` relabels bind mounts for SELinux hosts and is a no-op elsewhere.
     volumes:
-      - ./config/openab.toml:/etc/openab/config.toml:ro
-      - ./agents/CLAUDE.md:/home/node/CLAUDE.md:ro
-      - ./managed-claude-settings.json:/home/node/.claude/settings.json:ro
+      - ./config/openab.toml:/etc/openab/config.toml:ro,z
+      - ./agents/CLAUDE.md:/home/node/CLAUDE.md:ro,z
+      - ./managed-claude-settings.json:/home/node/.claude/settings.json:ro,z
       - claude-credentials:/home/node/.claude
-      - ./runtime/openab:/home/node/.openab
-      - ./runtime/drafts:/home/node/drafts
-      - ${SNAPSHOT_ROOT:-/srv/work-agent/repos}/work-helper:/home/node/code/work-helper:ro
-      - ${SNAPSHOT_ROOT:-/srv/work-agent/repos}/work-docs:/home/node/code/work-docs:ro
-      - ${SNAPSHOT_ROOT:-/srv/work-agent/repos}/teamsync-frontend:/home/node/code/teamsync-frontend:ro
-      - ${SNAPSHOT_ROOT:-/srv/work-agent/repos}/teamsync-backend:/home/node/code/teamsync-backend:ro
-      - ${SNAPSHOT_ROOT:-/srv/work-agent/repos}/work-helper/skills/slack-todo:/home/node/.claude/skills/slack-todo:ro
-      - ${SNAPSHOT_ROOT:-/srv/work-agent/repos}/work-helper/skills/fleet-recon:/home/node/.claude/skills/fleet-recon:ro
+      - ./runtime/openab:/home/node/.openab:z
+      - ./runtime/drafts:/home/node/drafts:z
+      # One mount for the whole snapshot root: adding a repo only touches
+      # config/repos.conf. Skills register from the work-helper snapshot.
+      - ${SNAPSHOT_ROOT:?set SNAPSHOT_ROOT in .env}:/home/node/code:ro,z
+      - ${SNAPSHOT_ROOT:?set SNAPSHOT_ROOT in .env}/work-helper/skills:/home/node/.claude/skills:ro,z
 
 volumes:
   claude-credentials:

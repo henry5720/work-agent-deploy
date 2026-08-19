@@ -2,20 +2,13 @@
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+# shellcheck source=scripts/lib.sh
+source "$ROOT/scripts/lib.sh"
+load_env "$ROOT"
 
-if [[ -z ${SNAPSHOT_ROOT:-} && -f "$ROOT/.env" ]]; then
-  while IFS= read -r line; do
-    [[ $line == SNAPSHOT_ROOT=* ]] || continue
-    SNAPSHOT_ROOT=${line#SNAPSHOT_ROOT=}
-    SNAPSHOT_ROOT=${SNAPSHOT_ROOT#\"}
-    SNAPSHOT_ROOT=${SNAPSHOT_ROOT%\"}
-    SNAPSHOT_ROOT=${SNAPSHOT_ROOT#\'}
-    SNAPSHOT_ROOT=${SNAPSHOT_ROOT%\'}
-    SNAPSHOT_ROOT=${SNAPSHOT_ROOT//'${HOME}'/$HOME}
-    break
-  done < "$ROOT/.env"
-fi
-SNAPSHOT_ROOT=${SNAPSHOT_ROOT:-/srv/work-agent/repos}
+SNAPSHOT_ROOT=${SNAPSHOT_ROOT:-$HOME/work-agent-snapshots}
+HOST_UID=${HOST_UID:-1000}
+HOST_GID=${HOST_GID:-1000}
 ENV_FILE="$ROOT/env/openab.env"
 STATE_DIR="$ROOT/runtime/openab"
 DRAFT_DIR="$ROOT/runtime/drafts"
@@ -35,16 +28,33 @@ grep -q '^WORK_HELPER_ISSUE_MODE=manual$' "$ENV_FILE" || fail "WORK_HELPER_ISSUE
 grep -q '^SLACK_BOT_TOKEN=xoxb-' "$ENV_FILE" || fail "SLACK_BOT_TOKEN must start with xoxb-"
 grep -q '^SLACK_APP_TOKEN=xapp-' "$ENV_FILE" || fail "SLACK_APP_TOKEN must start with xapp-"
 ! grep -q 'replace-me' "$ENV_FILE" || fail "$ENV_FILE still contains placeholder values"
-[[ $(stat -c '%u:%g' "$STATE_DIR") == 1000:1000 ]] || fail "$STATE_DIR must be owned by container user 1000:1000"
-[[ $(stat -c '%u:%g' "$DRAFT_DIR") == 1000:1000 ]] || fail "$DRAFT_DIR must be owned by container user 1000:1000"
 
+# The container runs as HOST_UID:HOST_GID (see Dockerfile), so the writable
+# bind mounts must belong to that identity.
+[[ $(stat -c '%u:%g' "$STATE_DIR") == "$HOST_UID:$HOST_GID" ]] || fail "$STATE_DIR must be owned by $HOST_UID:$HOST_GID"
+[[ $(stat -c '%u:%g' "$DRAFT_DIR") == "$HOST_UID:$HOST_GID" ]] || fail "$DRAFT_DIR must be owned by $HOST_UID:$HOST_GID"
+[[ $(id -u) == "$HOST_UID" ]] || fail "HOST_UID=$HOST_UID does not match the user running docker ($(id -u))"
+
+# The whole snapshot root is mounted at /home/node/code, so nothing but managed
+# snapshots may live in it.
+[[ -d "$SNAPSHOT_ROOT" ]] || fail "snapshot root missing: $SNAPSHOT_ROOT (run scripts/install-sync-cron.sh)"
+[[ -d "$SNAPSHOT_ROOT/work-helper/skills" ]] || fail "missing $SNAPSHOT_ROOT/work-helper/skills (skills are mounted from there)"
+
+declare -A expected=()
 while IFS='|' read -r name _ branch; do
   [[ -z "$name" || "$name" == \#* ]] && continue
+  expected[$name]=1
   repo="$SNAPSHOT_ROOT/$name"
   [[ -d "$repo/.git" ]] || fail "snapshot missing: $repo"
   [[ $(git -C "$repo" branch --show-current) == "$branch" ]] || fail "$name is not on $branch"
   [[ -z $(git -C "$repo" status --porcelain) ]] || fail "$name snapshot is dirty"
 done < "$ROOT/config/repos.conf"
+
+for entry in "$SNAPSHOT_ROOT"/*; do
+  [[ -e "$entry" ]] || continue
+  name=$(basename "$entry")
+  [[ -n ${expected[$name]:-} ]] || fail "$entry is not listed in config/repos.conf but would be mounted"
+done
 
 docker compose -f "$ROOT/compose.yaml" config --quiet
 printf 'Preflight passed.\n'

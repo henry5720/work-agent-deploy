@@ -1,11 +1,11 @@
 # Work Agent Runbook
 
 Local與deployment host共用同一份 Compose及runtime設定。State與草稿都放在本 repo的 `runtime/`；
-Local用 root `.env` 掛載現有 repos，deployment host不建立 root `.env`，使用 `/srv/work-agent/repos`。
+兩邊都要建立 root `.env`，指定 snapshot root與執行 docker的使用者 uid/gid。
 
-正式的deployment host是restricted Incus container，不是實體host。Incus instance需啟用nesting與開機自動啟動，內部提供systemd、Docker Compose、Git、SSH client、Python 3、curl與jq。以下deployment host命令都在該instance內、以專用deployment user執行；實體host只負責啟停或進入Incus instance。
-
-Incus instance必須有可用的IPv4 route與DNS，並能連線到GitHub、Slack、Claude及Linux套件來源。不要把實體host目錄bind mount進instance來傳遞credentials；secrets、snapshot key與Claude credential直接建立或匯入instance內。
+Deployment host是實體 Linux host，Compose以維護者自己的帳號執行，不需要sudo。該帳號必須在`docker` group裡，
+並且host要有Git、SSH client、Python 3、curl、jq與cron。SELinux enforcing的host不需要額外設定，Compose的
+bind mount已經帶`:z`。
 
 ## 1. 設定 Slack App
 
@@ -52,19 +52,24 @@ Incoming Webhook。OpenAB使用 `xoxb-...` 透過 Slack Web API回覆訊息。
 
 同一個 Slack app同時只能跑一個 OpenAB instance；local測試前先停止正式 instance。
 
+Local不掛開發用的 checkout，而是自己建一份乾淨 snapshot，避免把各 repo的 `.env` 掛進 container：
+
 ```bash
 cd "$HOME/code/work-agent-deploy"
 
 test -f .env || cp .env.example .env
+sed -i "s/^HOST_UID=.*/HOST_UID=$(id -u)/; s/^HOST_GID=.*/HOST_GID=$(id -g)/" .env
+
 test -f env/openab.env || cp env/openab.env.example env/openab.env
 chmod 600 env/openab.env
 $EDITOR env/openab.env
 
-mkdir -p \
-  runtime/openab \
-  runtime/drafts
+# Local用自己的 GitHub key即可，不必另外產一把。
+GITHUB_SSH_KEY="$HOME/.ssh/<你的 GitHub key>" ./scripts/update-snapshots.sh
+mkdir -p runtime/openab runtime/drafts
 
 ./tests/static.sh
+./scripts/preflight.sh
 docker compose build --pull
 docker compose up -d
 docker compose exec backlog-agent claude auth login
@@ -78,7 +83,7 @@ docker compose logs --tail=100 backlog-agent
 WORK_HELPER_ISSUE_MODE=manual
 ```
 
-Root `.env` 只指定四個 repos的共同根目錄；`env/openab.env` 才會傳進 container。
+Root `.env` 只給 Compose用（snapshot root與 uid）；`env/openab.env` 才會傳進 container。
 `.env`、`env/openab.env` 與 `runtime/` 都不進 Git。Claude login存在 named volume
 `claude-credentials`，重建 container後仍保留。
 
@@ -99,7 +104,7 @@ docker compose down
 
 ### GitHub 讀取權限
 
-使用 deployment user建立只能讀 snapshots的 SSH key：
+建立只能讀 snapshots的 SSH key：
 
 ```bash
 ssh-keygen -t ed25519 -f ~/.ssh/work-agent-github -C work-agent@deployment-host
@@ -107,7 +112,7 @@ chmod 600 ~/.ssh/work-agent-github
 cat ~/.ssh/work-agent-github.pub
 ```
 
-把 public key加到能讀 `config/repos.conf` 內四個 private repos的 GitHub account。
+把 public key加到能讀 `config/repos.conf` 內所有 private repos的 GitHub account。
 Private key只留在 host，不得放進 repo、Docker env或 container。
 
 ```bash
@@ -116,57 +121,54 @@ ssh -T -i ~/.ssh/work-agent-github -o IdentitiesOnly=yes git@github.com
 
 ### 安裝
 
-Deployment repo必須放在 `$HOME/code/work-agent-deploy`，而且不要建立 root `.env`。
-
 ```bash
 cd "$HOME/code/work-agent-deploy"
 
-./scripts/install-sync-timer.sh
+test -f .env || cp .env.example .env
+sed -i "s/^HOST_UID=.*/HOST_UID=$(id -u)/; s/^HOST_GID=.*/HOST_GID=$(id -g)/" .env
 
 test -f env/openab.env || cp env/openab.env.example env/openab.env
 chmod 600 env/openab.env
 $EDITOR env/openab.env
 
+./scripts/install-sync-cron.sh
 ./scripts/deploy.sh
 docker compose exec backlog-agent claude auth login
 docker compose logs --tail=100 backlog-agent
 ```
 
-`install-sync-timer.sh` 會建立 `/srv/work-agent/repos` 與 repo內的 `runtime/`、首次同步 repos並啟用每五分鐘一次的 timer。
-`deploy.sh` 會先執行 preflight，再 pull及啟動 container。
+`install-sync-cron.sh` 會建立 snapshot root與 repo內的 `runtime/`、寫入每小時一次的 crontab entry，並跑第一次同步。
+`deploy.sh` 會先執行 preflight，再 build及啟動 container。
 
-### 驗證
+### 驗證安全邊界
 
 ```bash
 docker compose ps
+crontab -l | grep work-agent-snapshots
 docker compose exec backlog-agent sh -lc \
   'python3 --version >/dev/null &&
    /home/node/code/work-helper/bin/slack-list --help >/dev/null &&
    test -w /home/node/.openab &&
+   test -w /home/node/drafts &&
    test ! -w /home/node/code/teamsync-frontend &&
    test ! -w /home/node/code/teamsync-backend &&
-   test -w /home/node/drafts &&
-   test ! -e /home/node/.ssh'
+   test -d /home/node/.claude/skills/slack-todo &&
+   test ! -e /home/node/.ssh &&
+   ! command -v gh'
 ```
 
-接著重做 local段落的三個 Slack測試，再確認未授權帳號的訊息不會被處理。
+`test -w` 這幾項是SELinux label與uid都正確才會過的，Compose render成功不代表通過。
+
+接著重做 local段落的 Slack測試，再確認未授權帳號的訊息不會被處理。
 
 ## 4. 日常操作
 
-### 進入正式環境
-
-Deployment repo在Incus instance內的 `/home/workagent/code/work-agent-deploy`，不會出現在實體host的deployment checkout。從有權管理restricted Incus project的帳號進入：
-
-```bash
-ssh -t <incus-manager> 'incus exec work-agent -- su - workagent'
-cd "$HOME/code/work-agent-deploy"
-```
-
-不要直接在正式環境修改repo檔案。所有設定與文件都先在local修改、commit及push；正式環境只執行`git pull --ff-only`與部署命令。
+不要直接在 deployment host修改repo檔案。所有設定與文件都先在local修改、commit及push；host只執行`git pull --ff-only`與部署命令。
 
 更新部署：
 
 ```bash
+cd "$HOME/code/work-agent-deploy"
 git pull --ff-only
 ./tests/static.sh
 ./scripts/deploy.sh
@@ -182,9 +184,9 @@ docker compose logs -f --tail=200 backlog-agent
 查看或立即更新 snapshots：
 
 ```bash
-systemctl list-timers "work-agent-snapshots@$(id -un).timer"
-sudo systemctl start "work-agent-snapshots@$(id -un).service"
-sudo journalctl -u "work-agent-snapshots@$(id -un).service" -n 100 --no-pager
+crontab -l | grep work-agent-snapshots
+tail -n 50 "${XDG_STATE_HOME:-$HOME/.local/state}/work-agent/snapshots.log"
+./scripts/update-snapshots.sh
 ```
 
 停止 agent：
@@ -195,59 +197,35 @@ docker compose down
 
 不要執行 `docker compose down -v`，它會刪除 Claude login。`runtime/` 不會被 `down` 刪除。
 
-### 更新既有 Skill
+### 更新或新增 Skill
 
-`slack-todo`與`fleet-recon`的正本在`work-helper/skills/`。修改後commit並push到`work-helper`的`main`；snapshot timer會在五分鐘內同步到`/srv/work-agent/repos/work-helper`，既有read-only bind mount會直接看到新內容，不需重新build或deploy。
+`/home/node/.claude/skills` 是 `work-helper/skills` 整個目錄的 read-only mount。修改或新增 skill只要 commit並 push到
+`work-helper` 的 `main`，下一次同步（每小時）之後就會生效，**不需要改這個 repo，也不需要重新 build或 deploy**。
 
-要立即同步：
+要立即生效就在 host上執行 `./scripts/update-snapshots.sh`。
 
-```bash
-sudo systemctl start "work-agent-snapshots@$(id -un).service"
-sudo journalctl -u "work-agent-snapshots@$(id -un).service" -n 100 --no-pager
-```
+唯一需要改這個 repo的情況：新 skill在這個環境跑不動（需要 `gh`、`git worktree`、可寫 repo或 local 專用工具）。
+那要在 `agents/CLAUDE.md` 的「Skill 邊界」寫明不要執行它以及該怎麼回覆，否則 agent會在 Slack上嘗試然後失敗。
 
 已啟動的Claude session可能已把舊skill內容讀進context。同步後使用新的Slack thread或等待session回收再驗證，不用以舊session判斷同步失敗。
 
-### 新增 Skill
-
-新skill先加入`work-helper/skills/<skill-name>/`並push到`main`，再修改這個deployment repo：
-
-| 正本 | 要改什麼 |
-|---|---|
-| `compose.yaml` | 將新skill目錄read-only mount到`/home/node/.claude/skills/<skill-name>` |
-| `agents/CLAUDE.md` | 寫清楚什麼情況使用新skill |
-| `tests/static.sh` | 驗證新mount存在且維持read-only |
-
-新skill不會只因為出現在整份`work-helper` snapshot裡就自動註冊；必須有`/home/node/.claude/skills/`下的獨立mount。修改完成後push deployment repo，進入Incus instance執行：
-
-```bash
-git pull --ff-only
-sudo systemctl start "work-agent-snapshots@$(id -un).service"
-./tests/static.sh
-./scripts/deploy.sh
-```
-
 ### 新增唯讀 Repo
 
-新增repo會擴大backlog agent可讀資料的範圍，必須當成能力與權限變更review。同步修改：
+新增repo會擴大backlog agent可讀資料的範圍，必須當成能力與權限變更review。整個 snapshot root是單一 mount，所以只改一個檔案：
 
 | 正本 | 要改什麼 |
 |---|---|
-| `config/repos.conf` | 新增SSH remote與基準branch |
-| `compose.yaml` | 新增指向`/home/node/code/<repo>`的read-only snapshot mount |
-| `config/openab.toml` | 需要簡短workspace名稱時新增alias |
-| `agents/CLAUDE.md` | 加入工作路徑與必要的使用規則 |
-| `docs/system-design.md` | 更新repo snapshots清單與能力邊界 |
-| `tests/static.sh` | 驗證mount、branch及read-only要求 |
-| 本runbook | 更新安全邊界驗證命令 |
+| `config/repos.conf` | 新增一行 `name\|SSH remote\|基準branch` |
 
-Snapshot key對應的GitHub帳號必須先取得新repo的read權限。Push deployment repo後，在Incus instance執行：
+Snapshot key對應的GitHub帳號必須先取得新repo的read權限。Push deployment repo後，在host執行：
 
 ```bash
 git pull --ff-only
-sudo systemctl start "work-agent-snapshots@$(id -un).service"
+./scripts/update-snapshots.sh
 ./scripts/preflight.sh
 ./scripts/deploy.sh
 ```
 
-最後依「驗證」章節確認所有repo snapshot不可寫、drafts可寫，並從新的Slack thread詢問新repo內容。
+`preflight.sh` 會擋下 snapshot root裡出現不在 `config/repos.conf` 的目錄，避免有東西被掛進 container卻沒有經過review。
+
+最後依「驗證安全邊界」確認所有repo snapshot不可寫、drafts可寫，並從新的Slack thread詢問新repo內容。

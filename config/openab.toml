@@ -33,12 +33,6 @@ inherit_env = [
 max_sessions = 10
 session_ttl_hours = 4
 
-[workspace.aliases]
-helper = "/home/node/code/work-helper"
-docs = "/home/node/code/work-docs"
-frontend = "/home/node/code/teamsync-frontend"
-backend = "/home/node/code/teamsync-backend"
-
 [reactions]
 enabled = true
 remove_after_reply = true

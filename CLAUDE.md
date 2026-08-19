@@ -33,7 +33,7 @@
 ## 不可破壞的邊界
 
 - Container不得取得 GitHub token、SSH key、Docker socket或可寫 repo checkout。
-- 四個 repo snapshot mount必須維持 read-only；只有 drafts是可寫的 project資料。
+- Snapshot root以單一 mount掛成 `/home/node/code`，必須維持 read-only；只有 drafts是可寫的 project資料。
 - `WORK_HELPER_ISSUE_MODE` 必須是 `manual`。遠端 agent不建立 GitHub issue，也不執行驗收回報。
 - GitHub SSH key只供 deployment host的 snapshot同步使用，不能進 Compose env或 volume。
 - OpenAB image必須固定 immutable digest。升級時先確認新版本 Slack config與 multi-arch manifest，再同時更新 spec和驗證。
@@ -44,7 +44,7 @@
 
 - 不提交 `env/openab.env`、credentials、private key或真實 token。
 - 改 Compose mount時，同步檢查 root filesystem、nested mount與 host目錄 ownership。
-- 改 snapshot路徑或 branch時，同時更新 `config/repos.conf`、systemd、preflight與 runbook。
+- 改 snapshot路徑或 branch時，同時更新 `config/repos.conf`、preflight與 runbook。
 - 改 Slack能力時，同時檢查 bot events、OAuth scopes、OpenAB config及人工驗收情境。
 - 不直接在 deployment host修 repo內檔案；這個 repo是部署設定的正本。
 - 沒有使用者明確要求，不建立 remote、不 commit、不 push、不部署。
@@ -57,7 +57,6 @@ Local每次至少跑：
 ./tests/static.sh
 bash -n scripts/*.sh tests/*.sh
 docker compose -f compose.yaml config --quiet
-systemd-analyze verify systemd/work-agent-snapshots@.service systemd/work-agent-snapshots@.timer
 ```
 
 有可用 deployment host secrets與 snapshots時，再跑：
