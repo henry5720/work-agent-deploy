@@ -77,7 +77,7 @@ docker compose ps
 docker compose logs --tail=100 backlog-agent
 ```
 
-`env/openab.env` 至少要填入 `SLACK_BOT_TOKEN` 與 `SLACK_APP_TOKEN`，並保留：
+`env/openab.env` 至少要填入 `SLACK_BOT_TOKEN`、`SLACK_APP_TOKEN`、`SLACK_LIST_ID` 與 `SLACK_TEAM_ID`（後兩個 `slack-list` 與 `publish-slack-home.sh` 都會用，缺了會直接中止），並保留：
 
 ```text
 WORK_HELPER_ISSUE_MODE=manual

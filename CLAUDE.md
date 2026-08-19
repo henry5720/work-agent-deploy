@@ -25,6 +25,7 @@
 | Container資源、mount與 image | `compose.yaml` |
 | Slack allowlist、session與 agent process | `config/openab.toml` |
 | Snapshot remote與基準 branch | `config/repos.conf` |
+| PM 在 Slack Home 看到的能力說明 | `config/slack-home.json`（改 `repos.conf` 要一起看這份） |
 | Backlog agent行為 | `agents/CLAUDE.md` |
 | Backlog agent可用的 skill | `work-helper/.claude/skills`（不在這個 repo） |
 | Deployment host操作步驟 | `docs/runbook.md` |

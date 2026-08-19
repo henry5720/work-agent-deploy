@@ -13,14 +13,23 @@ set -a
 source "$ENV_FILE"
 set +a
 : "${SLACK_BOT_TOKEN:?SLACK_BOT_TOKEN is required}"
+: "${SLACK_TEAM_ID:?SLACK_TEAM_ID is required}"
+: "${SLACK_LIST_ID:?SLACK_LIST_ID is required}"
+
+# The view references ${SLACK_TEAM_ID}/${SLACK_LIST_ID} in the list deep link. Substitute
+# from env instead of copying the IDs into the JSON: env/openab.env is the machine source of
+# truth, and a second copy here would drift the moment the list moves.
+view=$(python3 -c \
+  'import json,os,string,sys; print(string.Template(open(sys.argv[1]).read()).substitute(os.environ), end="")' \
+  "$VIEW_FILE")
 
 mapfile -t users < <(python3 -c \
   'import sys,tomllib; print(*tomllib.load(open(sys.argv[1], "rb"))["slack"]["allowed_users"], sep="\n")' \
   "$ROOT/config/openab.toml")
 
 for user in "${users[@]}"; do
-  payload=$(jq -cn --arg user "$user" --slurpfile view "$VIEW_FILE" \
-    '{user_id: $user, view: $view[0]}')
+  payload=$(jq -cn --arg user "$user" --argjson view "$view" \
+    '{user_id: $user, view: $view}')
   response=$(curl -fsS https://slack.com/api/views.publish \
     -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
     -H 'Content-Type: application/json; charset=utf-8' \
