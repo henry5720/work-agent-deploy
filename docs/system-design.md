@@ -74,7 +74,7 @@ Working tree停在基準 branch，但 `.git`內保有完整的 `origin/*` refs�
 1. OpenAB提供 sender、channel與thread context。
 2. backlog agent用 `slack-list context` 反查唯一的待辦列。
 3. agent讀待辦列、完整 item 留言串與相關 repo snapshots。
-4. agent依 `fleet-recon` 規則寫 issue body草稿。
+4. agent依該 snapshot 自己的 issue 規範寫 issue body草稿（含改動檔案、驗過的 code 錨點、驗證方式）。
 5. agent用 `slack-list draft` 把 Markdown附件、來源指紋搜尋頁與 New issue頁放回同一個 item 留言串。
 6. 核准者決定建立任務、直接派工或退回修改。
 
