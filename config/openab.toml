@@ -8,10 +8,22 @@ allow_all_channels = true
 allow_all_users = false
 allowed_users = [
   "U0B54FKJ93R",
+  "U0B5PH9P62G",
+  "U0B80QH6K63",
   "U0B85LX4KKP",
   "U0B8ASE0ARX",
   "U0B8B04R57T",
+  "U0B8FA5B8KY",
   "U0B8CNK8GNQ",
+  "U0B8P01RD5Z",
+  "U0B9394SCRW",
+  "U0B9AQUMGJC",
+  "U0B9BHVKXDE",
+  "U0BAC3AHMLK",
+  "U0BALPYFU3S",
+  "U0BKK22JC5Q",
+  "U0BKS08HJUB",
+  "U0BPD5T8FQE",
 ]
 allow_bot_messages = "off"
 allow_user_messages = "involved"
