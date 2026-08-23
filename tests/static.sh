@@ -136,7 +136,7 @@ grep -q 'CLAUDE_CONFIG_DIR: /home/node/.claude' "$ROOT/compose.yaml"
 grep -q './runtime/openab:/home/node/.openab:z' "$ROOT/compose.yaml"
 grep -q './runtime/drafts:/home/node/drafts:z' "$ROOT/compose.yaml"
 grep -q 'views.publish' "$ROOT/scripts/publish-slack-home.sh"
-grep -q 'apt-get install -y --no-install-recommends curl git libxcb1 python3 python3-pip' "$ROOT/Dockerfile"
+grep -q 'apt-get install -y --no-install-recommends curl git python3 python3-pip' "$ROOT/Dockerfile"
 grep -q 'ARG HOST_UID=1000' "$ROOT/Dockerfile"
 grep -Fq 'usermod -u "$HOST_UID"' "$ROOT/Dockerfile"
 grep -q 'HOST_UID: ${HOST_UID:-1000}' "$ROOT/compose.yaml"
@@ -232,7 +232,8 @@ grep -Fq 'FROM ${OPENAB_IMAGE}' "$ROOT/Dockerfile"
 grep -Fq 'ARG DOCLING_VERSION' "$ROOT/Dockerfile"
 grep -Fq 'docling==${DOCLING_VERSION}' "$ROOT/Dockerfile"
 ! grep -Fq 'docling==2.121.0' "$ROOT/Dockerfile"
-grep -Fq 'docling-tools models download --output-dir /opt/docling-models' "$ROOT/Dockerfile"
+grep -Fq 'docling-tools models download layout tableformer --output-dir /opt/docling-models' "$ROOT/Dockerfile"
+! grep -Fq 'libxcb1' "$ROOT/Dockerfile"
 grep -Fq 'DOCLING_ARTIFACTS_PATH=/opt/docling-models' "$ROOT/Dockerfile"
 grep -Fq 'DOCLING_VERSION: ${DOCLING_VERSION:?' "$ROOT/compose.yaml"
 grep -Fq 'DOCLING_ARTIFACTS_PATH: /opt/docling-models' "$ROOT/compose.yaml"
@@ -244,6 +245,19 @@ for forbidden in ocr vlm video asr libreoffice; do
     exit 1
   fi
 done
+python3 - "$ROOT" <<'PY'
+import pathlib
+import sys
+
+root = pathlib.Path(sys.argv[1])
+dockerfile = (root / "Dockerfile").read_text().lower()
+parser = (root / "agents/bin/parse-document").read_text().lower()
+for forbidden in ("rapidocr", "nemotron", "easyocr", "picture", "code-formula"):
+    assert forbidden not in dockerfile, f"Dockerfile enables or prefetches {forbidden}"
+    assert forbidden not in parser, f"parser enables or references {forbidden}"
+assert "do_ocr=false" in parser
+assert "do_table_structure=true" in parser
+PY
 grep -Fq 'npm i -g "@colbymchenry/codegraph@${CODEGRAPH_VERSION}"' "$ROOT/Dockerfile"
 grep -Fq 'npm i -g "oh-my-opencode-slim@${OMO_VERSION}"' "$ROOT/Dockerfile"
 grep -Fq 'npm i -g "@agentclientprotocol/claude-agent-acp@${CLAUDE_AGENT_ACP_VERSION}"' "$ROOT/Dockerfile"

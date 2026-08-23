@@ -23,7 +23,7 @@ deployment host
   -> 專用 GitHub SSH key，只存在 host
 ```
 
-Container 沒有 GitHub token、SSH key、Docker socket或可寫的 repo checkout。Runtime image由固定 multi-arch digest的 OpenAB image建置，加上 Python 3、git、Docling、CodeGraph 與 OMO，全部固定版本，不跟浮動 tag更新。Docling 只預取預設 PDF artifacts；不安裝 OCR、VLM、video、ASR 或 LibreOffice runtime。
+Container 沒有 GitHub token、SSH key、Docker socket或可寫的 repo checkout。Runtime image由固定 multi-arch digest的 OpenAB image建置，加上 Python 3、git、Docling、CodeGraph 與 OMO，全部固定版本，不跟浮動 tag更新。Docling 只預取 layout/table artifacts；不啟用掃描 PDF OCR，也不安裝 OCR、VLM、video、ASR 或 LibreOffice runtime。
 
 只有一個 container：沒有獨立 broker 或 relay。Slack bot token 與公司 gateway key
 共用這個 container，這是目前部署的取捨。
@@ -163,4 +163,5 @@ Local與deployment host共用同一套 runtime設定，不另建 local Compose�
 
 Docling 的 production baseline 與 nettop 上的 build、node 權限及 no-download 檢查命令，見
 [`docs/runbook.md`](docs/runbook.md#docling-production-runtime-baseline)。不要把 static test 或
-artifact directory 檢查宣稱成 offline PDF conversion；真實 PDF 附件仍須按 release gate 驗證。
+artifact directory 檢查宣稱成 offline PDF conversion；目前不支援掃描 PDF OCR，未來需另加 OCR
+engine；真實 PDF 附件仍須按 release gate 驗證。

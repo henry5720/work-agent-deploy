@@ -168,10 +168,14 @@ metadata，不解壓、不讀 member 內容；video 仍直接回覆不支援。
 
 `config/versions.env` 的 `DOCLING_VERSION=2.121.0` 是唯一版本正本；Compose 將它當 build arg
 傳給 Dockerfile。Docker build 會 exact-install 這個版本，執行
-`docling-tools models download --output-dir /opt/docling-models`，再把目錄設成唯讀並在
-build time 以 `node` 驗證可讀。Runtime 固定使用 `DOCLING_ARTIFACTS_PATH=/opt/docling-models`；
-`parse-document` 不會在 runtime 下載模型。這個 image 不額外安裝 OCR、VLM、video、ASR 或
-LibreOffice。
+`docling-tools models download layout tableformer --output-dir /opt/docling-models`，只預取
+layout/table artifacts，再把目錄設成唯讀並在 build time 以 `node` 驗證可讀。Runtime 固定使用
+`DOCLING_ARTIFACTS_PATH=/opt/docling-models`；`parse-document` 不會在 runtime 下載模型，PDF
+pipeline 會明確關閉 OCR 並開啟 table structure。這個 image 不額外安裝 OCR、VLM、video、ASR
+或 LibreOffice。
+
+目前不支援掃描 PDF OCR；需要 OCR 的文件必須明確回報無法讀取，不得猜測內容。未來要支援掃描
+PDF，必須另加並審核 OCR engine，不可把 RapidOCR 或其他 OCR model 偷渡進目前的 prefetch。
 
 在 **nettop** 完成 build 後，維護者必須逐字執行：
 
@@ -185,9 +189,9 @@ LibreOffice。
    python3 -c '\''from pathlib import Path; import os; p=Path("/opt/docling-models"); assert any(p.iterdir()); assert all(os.access(x, os.R_OK | (os.X_OK if x.is_dir() else 0)) for x in p.rglob("*"))'\'''
 ```
 
-以上只證明 exact pin、prefetch directory、environment 與 `node` permissions；沒有宣稱
-offline PDF conversion。要驗證真實 conversion，仍須用 release gate 的真實 PDF attachment
-測試，並確認沒有 runtime download。
+以上只證明 exact pin、selective prefetch directory、environment 與 `node` permissions；沒有
+宣稱 offline PDF conversion。要驗證一般 text PDF、layout/table 與 Office conversion，仍須用
+release gate 的真實附件測試；掃描 PDF OCR 不在目前支援範圍。
 
 停止 local instance：
 

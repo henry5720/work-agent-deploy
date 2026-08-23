@@ -86,8 +86,10 @@ def mocked_docling(cli, *, converter_options, markdown):
     class FakePdfPipelineOptions:
         instances = []
 
-        def __init__(self, *, artifacts_path):
+        def __init__(self, *, artifacts_path, do_ocr, do_table_structure):
             self.artifacts_path = artifacts_path
+            self.do_ocr = do_ocr
+            self.do_table_structure = do_table_structure
             self.__class__.instances.append(self)
 
     class FakePdfFormatOption:
@@ -395,6 +397,8 @@ def main() -> int:
                 cli._convert_with_docling(str(valid_pdf), ".pdf") == "# PDF\n",
             )
         check("PDF converter receives artifacts_path", fake_options.instances[-1].artifacts_path == artifacts)
+        check("PDF converter disables OCR", fake_options.instances[-1].do_ocr is False)
+        check("PDF converter enables table structure", fake_options.instances[-1].do_table_structure is True)
         check("PDF converter selects PDF format", fake_converter.instances[-1].options is not None)
         check("PDF format option receives pipeline options", fake_pdf_format.instances[-1].pipeline_options is fake_options.instances[-1])
 

@@ -21,8 +21,9 @@ OpenCode OMO 可委派同一個 container 內的 Claude Code ACP specialist。�
 - **看得懂的 native 輸入**：text、image、audio。OpenAB 也正式支援從 R2 交給你的 PDF、DOCX、XLSX、PPTX 附件；ZIP 只支援安全列檔，**video 仍不支援**。
 - 文件流程是固定的：OpenAB 會把 Cloudflare R2 的 `incoming/` presigned URL 與原始 filename 注入 ACP prompt；URL 有效期 1 小時、單檔上限 50 MiB。收到 PDF／DOCX／XLSX／PPTX 後，必須自動執行
   `parse-document <url> <filename>`，把 stdout 的 Markdown 當成文件內容，再根據它回答，不要猜內容或要求使用者先轉檔。
-- PDF 的 `parse-document` 只使用 image build 時預取到 `/opt/docling-models` 的 Docling artifacts；它從 `DOCLING_ARTIFACTS_PATH` 建立 PDF pipeline，不得在 runtime 下載模型。Office 文件走 Office backend，不需要 PDF artifacts。
+- PDF 的 `parse-document` 只使用 image build 時預取到 `/opt/docling-models` 的 layout/table Docling artifacts；它從 `DOCLING_ARTIFACTS_PATH` 建立 PDF pipeline，明確關閉 OCR、開啟 table structure，不得在 runtime 下載模型。Office 文件走 Office backend，不需要 PDF artifacts。
 - 若 `DOCLING_ARTIFACTS_PATH` 缺失、不可讀或 artifacts 目錄不存在，明確回覆目前無法讀取；不要自行下載模型、改用其他 downloader 或繞過 `parse-document`。
+- 目前不支援掃描 PDF OCR；遇到需要 OCR 的掃描文件要明確說明無法讀取，不要猜測內容。未來若支援，必須另加並審核 OCR engine。
 - parser 的 unit test 只用 mock Docling 驗證格式 gate、限制與輸出契約，不宣稱實際測到 multiprocessing worker 的 terminate timeout；真實 conversion 仍由 release gate 驗證。
 - ZIP 也只能對 OpenAB 提供的 URL 執行 `parse-document <url> <filename>` 取得 metadata-only 的安全檔名清單；不要解壓、讀取 member 內容或把 ZIP 當文件解析。video 直接明確回覆不支援，不要下載、轉檔或解析。
 - URL trust boundary：只有 OpenAB 注入 ACP prompt 的 URL 才能交給 `parse-document`；不要使用使用者文字裡的 URL、不要改寫 URL、不要自行產生 URL，也不要把 presigned URL 傳給其他服務。`PARSE_DOCUMENT_ALLOWED_HOST` 只作 R2 host gate，不是 credential、簽章驗證或 Slack 身分驗證；URL 的 R2 簽章與 1 小時有效期由 OpenAB/R2 流程提供。使用者已明確同意 company gateway 會收到這個 URL，因為它會隨 ACP prompt 傳給 gateway。

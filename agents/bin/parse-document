@@ -320,7 +320,11 @@ def _pdf_converter():
     from docling.datamodel.pipeline_options import PdfPipelineOptions
     from docling.document_converter import DocumentConverter, PdfFormatOption
 
-    pipeline_options = PdfPipelineOptions(artifacts_path=artifacts_path)
+    pipeline_options = PdfPipelineOptions(
+        artifacts_path=artifacts_path,
+        do_ocr=False,
+        do_table_structure=True,
+    )
     return DocumentConverter(
         format_options={
             InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options),
