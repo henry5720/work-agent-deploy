@@ -43,7 +43,15 @@ services:
       # agent 規則只有 agents/CLAUDE.md 一份。Claude Code 直接讀這個路徑；
       # OpenCode 由 config/opencode/opencode.json 的 `instructions` 指過來。
       - ./agents/CLAUDE.md:/home/node/CLAUDE.md:ro,z
-      - ./config/opencode:/home/node/.config/opencode:ro,z
+      # OPENCODE_CONFIG_DIR 整個唯讀會讓 `opencode acp` 一開機就死在
+      # `FileSystem.writeFile (.../.gitignore)`：OpenCode 自己要在 config dir 寫
+      # `.gitignore` 與 state。所以目錄給一個可寫的 named volume，設定正本改成單檔
+      # 唯讀疊在上面 —— agent 改不掉 provider／permission，OpenCode 仍寫得進去。
+      # Compose 依 target 深度掛載，父層 volume 先於下面兩個檔案 bind。
+      # 在 config/opencode/ 加檔案要一起加一行；tests/static.sh 會比對目錄內容。
+      - opencode-config:/home/node/.config/opencode
+      - ./config/opencode/opencode.json:/home/node/.config/opencode/opencode.json:ro,z
+      - ./config/opencode/oh-my-opencode-slim.json:/home/node/.config/opencode/oh-my-opencode-slim.json:ro,z
       - ./managed-claude-settings.json:/home/node/.claude/settings.json:ro,z
       - claude-credentials:/home/node/.claude
       # OpenCode 的 auth、session storage 與 plugin/npm cache 必須可寫，而
@@ -63,5 +71,6 @@ services:
 
 volumes:
   claude-credentials:
+  opencode-config:
   opencode-data:
   opencode-cache:

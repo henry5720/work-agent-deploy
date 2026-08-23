@@ -225,12 +225,30 @@ OpenCode runtime 另外驗這幾項（`deploy.sh` 也會跑同一組）：
   'opencode --version &&
    npm ls -g --depth=0 oh-my-opencode-slim &&
    test ! -w /home/node/.config/opencode/opencode.json &&
+   test ! -w /home/node/.config/opencode/oh-my-opencode-slim.json &&
+   test -w /home/node/.config/opencode &&
+   touch /home/node/.config/opencode/.probe && rm /home/node/.config/opencode/.probe &&
    test -w /home/node/.cache &&
    test -w /home/node/.local/share/opencode &&
    grep -q "^command = \"opencode\"" /etc/openab/config.toml'
 ```
 
 `test -w` 這幾項是SELinux label與uid都正確才會過的，Compose render成功不代表通過。
+
+`/home/node/.config/opencode` 這個目錄**必須可寫**，兩個設定檔**必須不可寫**，兩邊都要成立。
+OpenCode 自己會在 config dir 寫 `.gitignore` 與 state；整個目錄掛成唯讀時 `opencode acp` 會在
+啟動時死掉，OpenAB 端只看得到 connection closed，container log 是：
+
+```
+Unexpected error: FileSystem.writeFile (/home/node/.config/opencode/.gitignore)
+```
+
+所以目錄是可寫的 named volume `opencode-config`，設定正本用單檔唯讀 mount 疊在上面。
+在 `config/opencode/` 新增設定檔時要一起在 `compose.yaml` 加一行單檔 mount，否則那個檔不會
+進 container；`tests/static.sh` 會比對目錄內容與 mount 清單，漏了會擋下來。
+
+`opencode-config` 只放 OpenCode 自己生成的檔。它可以安全刪掉重建（`docker volume rm
+work-agent_opencode-config`，container 停著時做），設定不會跟著掉 —— 正本在 repo。
 
 `gh` 這個 binary本身存在於 OpenAB base image內，拿掉它不是這裡的邊界。邊界是它沒有任何憑證，
 加上 runtime 的 deny 規則 —— OpenCode runtime 是 `config/opencode/opencode.json` 的
@@ -354,7 +372,8 @@ host 端不要直接動 `runtime/drafts`。log 裡出現 `FAILED` 就是那一�
 ```
 
 不要執行 `./scripts/compose.sh down -v`，它會刪掉 `claude-credentials`（Claude login）與
-`opencode-data`（OpenCode auth 與 session storage）。`runtime/` 不會被 `down` 刪除。
+`opencode-data`（OpenCode auth 與 session storage）。`opencode-config` 與 `opencode-cache`
+只有 OpenCode 自己生成的檔，刪掉會自己長回來。`runtime/` 不會被 `down` 刪除。
 
 ### 升級版本
 

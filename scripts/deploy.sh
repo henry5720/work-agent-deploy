@@ -40,11 +40,19 @@ if [[ $OPENAB_AGENT_RUNTIME == opencode ]]; then
   compose exec -T backlog-agent sh -lc \
     "npm ls -g --depth=0 oh-my-opencode-slim | grep -qF 'oh-my-opencode-slim@$OMO_VERSION'"
   # The OMO plugin resolves from the image, so /home/node/.cache only has to be
-  # writable; the config dir stays read-only on purpose.
+  # writable. The config dir itself must be writable too: OpenCode writes its own
+  # `.gitignore` and state there, and a read-only one kills `opencode acp` at
+  # startup. The committed config files stay read-only single-file mounts, so the
+  # agent cannot rewrite provider or permission settings. The touch/rm probe is
+  # the exact operation that failed, not a proxy for it.
   compose exec -T backlog-agent sh -lc \
     'test -r /home/node/.config/opencode/opencode.json &&
      test -r /home/node/.config/opencode/oh-my-opencode-slim.json &&
      test ! -w /home/node/.config/opencode/opencode.json &&
+     test ! -w /home/node/.config/opencode/oh-my-opencode-slim.json &&
+     test -w /home/node/.config/opencode &&
+     touch /home/node/.config/opencode/.deploy-write-probe &&
+     rm /home/node/.config/opencode/.deploy-write-probe &&
      test -w /home/node/.cache &&
      test -w /home/node/.local/share/opencode'
   compose exec -T backlog-agent sh -lc \

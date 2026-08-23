@@ -49,6 +49,12 @@ RUN chmod 0755 /usr/local/bin/company-image \
     && company-image --help >/dev/null \
     && slack-thread-artifact --help >/dev/null
 
+# OpenCode 要在 OPENCODE_CONFIG_DIR 內寫 `.gitignore` 與 state，compose 因此把一個
+# 可寫的 named volume 掛在 /home/node/.config/opencode，設定正本只用單檔唯讀疊上去。
+# 空的 named volume 會沿用 mount point 在 image 內的 ownership，目錄不存在就會變成
+# root:root，node 寫不進去 —— 所以先建好，讓下面的 chown -R 一起接手。
+RUN mkdir -p /home/node/.config/opencode
+
 RUN if [ "$HOST_GID" != "1000" ]; then groupmod -g "$HOST_GID" node; fi \
     && if [ "$HOST_UID" != "1000" ]; then usermod -u "$HOST_UID" -g "$HOST_GID" node; fi \
     && chown -R "$HOST_UID:$HOST_GID" /home/node /usr/local/bin/openab

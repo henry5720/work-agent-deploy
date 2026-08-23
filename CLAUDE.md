@@ -43,6 +43,7 @@
 
 - Container不得取得 GitHub token、SSH key、Docker socket或可寫 repo checkout。
 - Snapshot root以單一 mount掛成 `/home/node/code`，必須維持 read-only。Project資料中只有 `/home/node/drafts` 與 `/home/node/code/.index`（CodeGraph索引）可寫；repo源碼永遠不可寫。索引由 host維護，agent只能查詢。
+- `OPENCODE_CONFIG_DIR`（`/home/node/.config/opencode`）本身必須可寫，`config/opencode/` 的每個設定檔必須是**單檔**唯讀 mount。整個目錄掛唯讀會讓 `opencode acp` 死在 `FileSystem.writeFile (.../.gitignore)`；把設定檔換成整目錄可寫會讓 agent 改得動 provider 與 permission。在 `config/opencode/` 加檔案要一起加 mount，`tests/static.sh` 會擋。
 - `WORK_HELPER_ISSUE_MODE` 必須是 `manual`。遠端 agent不建立 GitHub issue，也不執行驗收回報。
 - GitHub SSH key只供 deployment host的 snapshot同步使用，不能進 Compose env或 volume。
 - OpenAB image必須固定 immutable digest，正本在 `config/versions.env`。升級時先確認新版本 Slack config與 multi-arch manifest，兩個 variant（`-opencode`、`-claude`）一起換，再同時更新 spec和驗證。

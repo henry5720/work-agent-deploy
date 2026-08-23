@@ -335,10 +335,130 @@ for key in ("disabled_skills", "disabled_mcps", "disabled_agents", "disabled_too
 assert set(models) == {"gpt-5.6-terra", "gpt-5.6-luna"}, sorted(models)
 PY
 
-grep -Fq './config/opencode:/home/node/.config/opencode:ro,z' "$ROOT/compose.yaml"
 grep -Fq 'opencode-data:/home/node/.local/share/opencode' "$ROOT/compose.yaml"
 grep -Fq 'opencode-cache:/home/node/.cache' "$ROOT/compose.yaml"
 grep -Fq 'OPENCODE_CONFIG_DIR: /home/node/.config/opencode' "$ROOT/compose.yaml"
+
+# ------------------------------------------- OPENCODE_CONFIG_DIR must be writable
+# OpenCode writes `.gitignore` and state into its own config dir. Mounting the
+# whole directory read-only killed `opencode acp` at startup with
+# `Unexpected error: FileSystem.writeFile (/home/node/.config/opencode/.gitignore)`.
+# So the directory is a writable named volume and each config file is a separate
+# read-only bind on top: the agent still cannot rewrite provider or permission
+# settings. This parses compose.yaml as text on purpose — it has to catch the
+# mount shape on a machine with no Docker, which is where the bug shipped from.
+python3 - "$ROOT" <<'PY'
+import pathlib, re, sys
+
+root = pathlib.Path(sys.argv[1])
+compose = (root / "compose.yaml").read_text()
+
+match = re.search(r"^\s*OPENCODE_CONFIG_DIR:\s*(\S+)\s*$", compose, re.M)
+assert match, "compose.yaml no longer sets OPENCODE_CONFIG_DIR"
+config_dir = match.group(1)
+
+
+def split_mount(spec):
+    """Split src:dst[:opts]. Colons inside ${...} are not separators."""
+    parts, current, depth, i = [], "", 0, 0
+    while i < len(spec):
+        if spec.startswith("${", i):
+            depth, current, i = depth + 1, current + "${", i + 2
+            continue
+        char = spec[i]
+        if char == "}" and depth:
+            depth -= 1
+        elif char == ":" and depth == 0:
+            parts.append(current)
+            current, i = "", i + 1
+            continue
+        current, i = current + char, i + 1
+    parts.append(current)
+    return parts
+
+
+# Every mount is one line in this file, so a line scan is enough and needs no yaml.
+mounts = {}
+for line in compose.splitlines():
+    stripped = line.strip()
+    if not stripped.startswith("- ") or stripped.startswith("- #"):
+        continue
+    spec = stripped[2:].strip()
+    if ":" not in spec or spec.startswith(("path:", "required:")):
+        continue
+    parts = split_mount(spec)
+    if len(parts) < 2 or not parts[1].startswith("/"):
+        continue
+    source, target = parts[0], parts[1]
+    options = set(parts[2].split(",")) if len(parts) > 2 else set()
+    assert target not in mounts, f"compose.yaml mounts {target} twice"
+    mounts[target] = (source, options)
+
+declared = set(re.findall(r"^  ([a-z0-9-]+):\s*$", compose.split("\nvolumes:\n")[-1], re.M))
+
+# 1. The config dir itself: a declared named volume, writable, never a bind of the
+#    whole config/opencode directory.
+assert config_dir in mounts, f"nothing is mounted at OPENCODE_CONFIG_DIR ({config_dir})"
+source, options = mounts[config_dir]
+assert "ro" not in options, (
+    f"{config_dir} is mounted read-only; `opencode acp` cannot write its .gitignore "
+    "and dies at startup"
+)
+assert not source.startswith(("/", "./", "${")), (
+    f"{config_dir} must be a named volume so it is writable under a read-only "
+    f"rootfs, got the bind source {source!r}"
+)
+assert source in declared, f"named volume {source!r} is not declared in compose.yaml"
+
+# 2. Each committed config file is mounted read-only, by itself, at the right path.
+config_files = sorted(p.name for p in (root / "config/opencode").iterdir() if p.is_file())
+assert config_files, "config/opencode has no config files"
+for name in config_files:
+    target = f"{config_dir}/{name}"
+    assert target in mounts, (
+        f"config/opencode/{name} is not mounted at {target}; OpenCode would read the "
+        "empty named volume instead of the committed config"
+    )
+    source, options = mounts[target]
+    assert source == f"./config/opencode/{name}", source
+    assert "ro" in options, (
+        f"{target} is writable; the agent could rewrite provider or permission settings"
+    )
+
+# 3. Nothing else is mounted into the config dir, so a renamed or deleted config
+#    file cannot leave a stale mount behind pointing at a missing source.
+expected = {config_dir} | {f"{config_dir}/{name}" for name in config_files}
+stale = {t for t in mounts if t == config_dir or t.startswith(config_dir + "/")} - expected
+assert not stale, f"compose.yaml mounts paths that config/opencode does not have: {sorted(stale)}"
+
+# 4. An empty named volume inherits the ownership of the mount point in the image.
+#    If the Dockerfile does not create the directory it lands as root:root and the
+#    writable volume is writable by nobody.
+dockerfile = (root / "Dockerfile").read_text()
+assert f"mkdir -p {config_dir}" in dockerfile, (
+    f"the Dockerfile must create {config_dir} so the named volume inherits node's "
+    "ownership instead of root's"
+)
+assert re.search(r'chown -R "\$HOST_UID:\$HOST_GID" /home/node\b', dockerfile), (
+    "the Dockerfile no longer chowns /home/node to the host uid"
+)
+
+# 5. deploy.sh has to prove all of this against a running container, both ways.
+deploy = (root / "scripts/deploy.sh").read_text()
+# The trailing guard matters: `test -w <dir>/opencode.json` must not satisfy the
+# check for the directory itself.
+assert re.search(rf"test -w {re.escape(config_dir)}(?![/\w])", deploy), (
+    "scripts/deploy.sh does not check that the OpenCode config dir is writable"
+)
+assert re.search(rf"touch {re.escape(config_dir)}/\.[\w-]+", deploy), (
+    "scripts/deploy.sh does not actually write a dotfile into the config dir, which "
+    "is the operation that failed in production"
+)
+for name in config_files:
+    assert f"test ! -w {config_dir}/{name}" in deploy, (
+        f"scripts/deploy.sh does not check that {config_dir}/{name} stays read-only"
+    )
+PY
 
 # The gateway credentials must be documented as env, never committed.
 grep -q '^COMPANY_GATEWAY_BASE_URL=' "$ROOT/env/openab.env.example"
