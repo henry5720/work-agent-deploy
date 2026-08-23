@@ -215,8 +215,9 @@ crontab -l | grep work-agent-snapshots
 ```
 
 第一行會印出 drafts 內的 PNG 路徑，第二行確認開頭是 PNG magic。驗完把那個檔刪掉。
-`tests/image-runtime.py` 只驗請求 shape 與拒絕不合法輸入，**不會**證明公司 gateway 接受這個
-請求；gateway 沒實際回過圖之前不要說生圖已經可用。
+`tests/image-runtime.py` 只驗請求 shape、兩種回應形狀（JSON body 與 `text/event-stream`）與拒絕
+不合法輸入，**不會**證明公司 gateway 接受這個請求，也不會告訴你它這次回哪一種；gateway 沒實際
+回過圖之前不要說生圖已經可用。
 
 OpenCode runtime 另外驗這幾項（`deploy.sh` 也會跑同一組）：
 

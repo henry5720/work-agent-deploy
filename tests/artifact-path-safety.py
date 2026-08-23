@@ -95,11 +95,24 @@ def today() -> str:
 
 
 class Response:
-    def __init__(self, payload: bytes = b'{"ok": true}', status: int = 200):
+    def __init__(
+        self,
+        payload: bytes = b'{"ok": true}',
+        status: int = 200,
+        content_type: str = "application/json",
+    ):
         self.payload, self.status = payload, status
+        self.headers = {"Content-Type": content_type}
+        self._stream = io.BytesIO(payload)
 
-    def read(self) -> bytes:
-        return self.payload
+    def getheader(self, name: str, default: str = "") -> str:
+        return self.headers.get(name, default)
+
+    def read(self, amount: int = -1) -> bytes:
+        return self._stream.read(amount if amount is not None and amount >= 0 else -1)
+
+    def readline(self, limit: int = -1) -> bytes:
+        return self._stream.readline(limit)
 
     def __enter__(self):
         return self
@@ -134,21 +147,35 @@ class Slack:
 
 
 class Gateway:
-    """假 gateway，永遠回一張最小的合法 PNG。"""
+    """假 gateway，永遠回一張最小的合法 PNG。
 
-    def __init__(self, image: bytes | None = None):
+    `stream=True` 回的是實測那種 SSE。寫檔那一段兩種回應共用，所以路徑安全的 case
+    也要能用 SSE 跑一次 —— parser 換了不代表 dirfd 與 O_EXCL 那條路可以鬆掉。
+    """
+
+    def __init__(self, image: bytes | None = None, stream: bool = False):
         self.requests: list = []
         self.image = image if image is not None else png_bytes()
+        self.stream = stream
 
     def __call__(self, request, timeout=None):
         self.requests.append(request)
-        payload = {
-            "output": [
+        encoded = base64.b64encode(self.image).decode()
+        if self.stream:
+            event = json.dumps(
                 {
-                    "type": "image_generation_call",
-                    "result": base64.b64encode(self.image).decode(),
+                    "type": "response.image_generation_call.partial_image",
+                    "item_id": "ig_1",
+                    "output_index": 0,
+                    "partial_image_index": 0,
+                    "partial_image_b64": encoded,
+                    "output_format": "png",
                 }
-            ]
+            )
+            body = f": keepalive\n\ndata: {event}\n\n"
+            return Response(body.encode(), content_type="text/event-stream")
+        payload = {
+            "output": [{"type": "image_generation_call", "result": encoded}]
         }
         return Response(json.dumps(payload).encode())
 
@@ -298,8 +325,8 @@ def image_cases(cli, workdir: Path) -> None:
         cli.SOURCE_ROOTS = (drafts, staging)
         return drafts, staging, outside
 
-    def generate(argv: list[str]) -> tuple[int, str, str, Gateway]:
-        gateway = Gateway()
+    def generate(argv: list[str], stream: bool = False) -> tuple[int, str, str, Gateway]:
+        gateway = Gateway(stream=stream)
         cli.urlopen = gateway
         code, out, err = run(cli, argv)
         return code, out, err, gateway
@@ -397,6 +424,53 @@ def image_cases(cli, workdir: Path) -> None:
     check("a bad gateway response exits 3", code == cli.EXIT_RUNTIME, f"exit={code}")
     remaining = sorted(p.name for p in (drafts / today()).glob("*"))
     check("a bad gateway response reserves no name", not remaining, str(remaining))
+
+    # 8. SSE 回應走的是同一條寫檔路徑：日期目錄仍然是 dirfd 握著的那一個，種好的
+    #    symlink 仍然寫不穿，也仍然不留暫存檔。
+    drafts, staging, outside = fresh()
+    victim = outside / "victim.png"
+    victim.write_bytes(b"do not overwrite me")
+    day = drafts / today()
+    day.mkdir()
+    (day / "streamed.png").symlink_to(victim)
+    code, out, err, gateway = generate(
+        ["generate", "--prompt", "x", "--name", "streamed"], stream=True
+    )
+    check("a streamed response exits 0", code == 0, err.strip())
+    check(
+        "a streamed response is written past a planted symlink",
+        out.strip() == str(day / "streamed-2.png"),
+        out.strip(),
+    )
+    check(
+        "a streamed response does not overwrite the symlink victim",
+        content(victim) == b"do not overwrite me",
+        str(content(victim)),
+    )
+    check("the planted symlink survives the streamed write", (day / "streamed.png").is_symlink())
+    check(
+        "the streamed PNG is complete",
+        content(day / "streamed-2.png") == gateway.image,
+    )
+    leftovers = sorted(
+        p.name for p in day.glob("*") if p.name not in ("streamed.png", "streamed-2.png")
+    )
+    check("a streamed response leaves no temporary file", not leftovers, str(leftovers))
+
+    # 9. 日期目錄是 symlink 時，SSE 也一樣在呼叫 gateway 之前就被擋下來。
+    drafts, staging, outside = fresh()
+    (outside / "loot").mkdir()
+    (drafts / today()).symlink_to(outside / "loot")
+    code, _, err, gateway = generate(
+        ["generate", "--prompt", "x", "--name", "streamed"], stream=True
+    )
+    check("SSE does not change the day-directory check", code == cli.EXIT_RUNTIME, f"exit={code}")
+    check("SSE still refuses before the gateway call", not gateway.requests)
+    check(
+        "SSE writes nothing into the symlink target",
+        not list((outside / "loot").iterdir()),
+        str(list((outside / "loot").iterdir())),
+    )
 
 
 def main() -> int:

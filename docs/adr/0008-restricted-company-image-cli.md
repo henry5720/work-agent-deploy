@@ -42,6 +42,11 @@ env 裡。那等於把 endpoint、header、model、輸出路徑全部交給模�
   `input_text`，`edit` 另外附一張 `input_image` data URL，`tool_choice` 固定指到該 tool，
   `output_format` 固定 `png`。回應只認 `image_generation_call` 的 base64 結果，而且要通過 PNG
   magic 檢查才寫檔。
+- 回應的兩種形狀都要讀：一般 JSON body，以及 `Content-Type: text/event-stream` 的 SSE。挑哪一種
+  看回應的 Content-Type，不預設 gateway 會回哪一種（SSE body 但沒有那個 header 時，用 body 開頭
+  的形狀判斷）。SSE 逐行讀，單行與整份、以及要解碼的 base64 都有大小上限；`partial_image_b64`
+  當成一張完整的圖而不是要接起來的 chunk，所以同一個 output 後到的取代先到的，帶 `result` 的收尾
+  事件優先於 partial。錯誤只印截斷過的說明，不把整個 event（可能就是那張圖）倒進 stderr。
 - 輸出一律寫到 `/home/node/drafts/<UTC 日期>/<name>.png`，檔名衝突時加序號，不覆蓋。
 - 選 CLI 不選 MCP server：MCP 要在兩個 runtime 各設定一次、各自維護一份 server 定義，而這裡需要
   的東西就是一個帶四個參數的呼叫。CLI 由 image 提供，兩個 runtime 不必各自設定就都拿得到。
@@ -53,7 +58,12 @@ env 裡。那等於把 endpoint、header、model、輸出路徑全部交給模�
 ## Consequences
 
 - 生圖從「文件寫了但沒有實作」變成一條可測的路徑：`tests/image-runtime.py` 用假的 `urlopen`
-  驗請求 shape、PNG 輸出位置與各種不合法輸入被擋，不需要 Docker、不需要真的 key。
+  驗請求 shape、兩種回應形狀、PNG 輸出位置與各種不合法輸入被擋，不需要 Docker、不需要真的 key。
+- 只吃 JSON 的版本在真 gateway 上是壞的：實測 `POST {base}/responses` 的 image_generation 請求
+  回 `200 text/event-stream`，圖在 `response.image_generation_call.partial_image` 事件的
+  top-level `partial_image_b64`（單一 event 就有 ~1.19M base64 字元，`output_format` 是 png），
+  所以整個 body 直接 `json.loads` 一定失敗在「gateway response is not JSON」。兩種都接的代價是
+  多一個 parser，好處是 gateway 之後改回非 stream 也不會再壞一次。
 - 代價是這支 CLI 的介面就是能力上限。要多一個尺寸或多一種 mode 都得改 repo 並重新 build image，
   不能在 Slack 當場繞過。這是刻意的。
 - key 仍然在同一個 container 裡，agent 仍然可以自己 `curl`。這支 CLI 不是沙箱，是把「正常路徑」

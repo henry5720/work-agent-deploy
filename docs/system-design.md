@@ -123,7 +123,10 @@ Slack 傳進來的圖片要到得了模型，靠的是
 沒有獨立的 artifact broker。它只有 `generate` 與 `edit` 兩個 mode，只收 prompt、允許清單內的 size
 與（`edit` 用的）來源圖片路徑；沒有 endpoint、header、model 或輸出路徑參數，gateway 位置與 key
 只從 runtime env 讀。請求固定用公司 gateway 的 Responses API `image_generation` tool，輸出固定是
-PNG，固定寫到 `/home/node/drafts/<UTC 日期>/`。介面就是能力上限：多一個尺寸都要改 repo 重新
+PNG，固定寫到 `/home/node/drafts/<UTC 日期>/`。回應的兩種形狀都吃：一般 JSON body 與
+`text/event-stream` 的 SSE（實測公司 gateway 回的是後者，圖在 `partial_image_b64`）——
+用回應的 Content-Type 決定怎麼讀，兩條路徑都要過同一組 base64 解碼與 PNG magic 檢查才寫檔，
+所以 gateway 哪天改回非 stream 也不會壞。介面就是能力上限：多一個尺寸都要改 repo 重新
 build。理由與拒絕的替代方案見
 [`adr/0008-restricted-company-image-cli.md`](adr/0008-restricted-company-image-cli.md)。
 

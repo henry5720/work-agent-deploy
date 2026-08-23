@@ -17,6 +17,14 @@ Claude ACP rollback 都是用 bash 執行它，所以 rollback 不會少掉生�
 請求走公司 gateway 的 Responses API `image_generation` tool：`generate` 只送
 prompt，`edit` 另外把來源圖片以 data URL 當成 `input_image` 一起送。
 
+回應有兩種形狀，兩種都要接：一種是一般的 JSON body，一種是
+`Content-Type: text/event-stream` 的 SSE（實測公司 gateway 會回這一種，事件裡帶
+`response.image_generation_call.partial_image`）。所以讀法看 Content-Type 決定，
+不預設哪一種；SSE 逐行讀，單行與整份都有上限。SSE 的 `partial_image_b64` 每次都是
+一張完整的圖而不是要接起來的 chunk，因此同一個 output 後到的取代先到的，收尾事件
+（output item 或整份 response）優先於 partial。兩條路徑最後都走同一組 base64 解碼、
+PNG magic 檢查與原子寫檔。
+
 檔案系統的走法刻意不用 resolve()：resolve 跟著 symlink 走，檢查過的字串和真正
 開到的檔案可以是兩回事。來源圖片固定從允許的那個 root 開一個 dirfd，再逐段
 `O_DIRECTORY|O_NOFOLLOW` 往下走。輸出也一樣：日期目錄以 dirfd 握住（gateway 呼叫
@@ -32,6 +40,7 @@ import argparse
 import base64
 import binascii
 import errno
+import io
 import json
 import os
 import re
@@ -51,6 +60,20 @@ DEFAULT_SIZE = "1024x1024"
 MAX_PROMPT_CHARS = 4000
 MAX_SOURCE_BYTES = 8 * 1024 * 1024
 REQUEST_TIMEOUT_SECONDS = 180
+
+# 回應的上限。gateway 回什麼都不能讓這支 CLI 無上限地吃記憶體，所以 SSE 分「單行」
+# 與「整份」兩層（一個 data 行就裝著整張圖的 base64，實測 ~1.2M 字元），非 SSE 的
+# JSON body 一次讀完只需要一層，真正要解碼的 base64 另外再擋一次。
+MAX_SSE_LINE_CHARS = 16 * 1024 * 1024
+MAX_SSE_BODY_CHARS = 64 * 1024 * 1024
+MAX_JSON_BODY_CHARS = 64 * 1024 * 1024
+MAX_IMAGE_B64_CHARS = 16 * 1024 * 1024
+
+# 錯誤事件只取得出短說明。整個 event 不會被印出來 —— 它裡面可能就是那張圖。
+MAX_ERROR_DETAIL_CHARS = 200
+
+SSE_MEDIA_TYPE = "text/event-stream"
+SSE_DONE = "[DONE]"
 
 PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 JPEG_MAGIC = b"\xff\xd8\xff"
@@ -344,7 +367,12 @@ def build_body(mode: str, prompt: str, size: str, source: tuple[bytes, str] | No
     }
 
 
-def call_gateway(body: dict) -> dict:
+def call_gateway(body: dict) -> bytes:
+    """POST 一次，回傳要寫檔的 PNG bytes。
+
+    JSON 與 SSE 兩種回應都吃，用 Content-Type 決定怎麼讀。解碼與 PNG magic 檢查在
+    連線關掉之後才做，所以兩條路徑共用同一組檢查。
+    """
     endpoint = gateway_endpoint()
     key = gateway_key()
     request = Request(
@@ -359,37 +387,267 @@ def call_gateway(body: dict) -> dict:
     )
     try:
         with urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
-            raw = response.read()
+            encoded = read_image_b64(response)
     except HTTPError as exc:
         detail = exc.read().decode("utf-8", "replace")[:500] if exc.fp else ""
         raise RuntimeFailure(f"gateway returned HTTP {exc.code}: {detail}") from exc
     except URLError as exc:
         raise RuntimeFailure(f"cannot reach the gateway: {exc.reason}") from exc
+    return decode_png(encoded)
+
+
+def response_media_type(response) -> str:
+    """回應的 media type，小寫、去掉 `; charset=…` 之類的參數。"""
+    raw = ""
+    getter = getattr(response, "getheader", None)
+    if callable(getter):
+        raw = getter("Content-Type", "") or ""
+    if not raw:
+        headers = getattr(response, "headers", None)
+        if headers is not None:
+            raw = headers.get("Content-Type", "") or ""
+    return raw.split(";", 1)[0].strip().lower()
+
+
+def read_image_b64(response) -> str:
+    """從回應裡拿到那張圖的 base64，還沒解碼。"""
+    if response_media_type(response) == SSE_MEDIA_TYPE:
+        return stream_image_b64(response)
+    raw = read_json_body(response)
+    if raw[:64].lstrip().startswith((b"data:", b"event:", b"id:", b"retry:", b":")):
+        # 有些 gateway 會 stream 但漏掉 Content-Type。body 已經是 SSE 的形狀時就照
+        # SSE 讀，不要用「這不是 JSON」把一次已經成功的呼叫丟掉。
+        return stream_image_b64(io.BytesIO(raw))
+    return payload_image_b64(parse_json_body(raw))
+
+
+def read_json_body(response) -> bytes:
+    """一次讀完非 SSE 的 body，超過上限就失敗。"""
     try:
-        return json.loads(raw)
-    except json.JSONDecodeError as exc:
+        raw = response.read(MAX_JSON_BODY_CHARS + 1)
+    except (OSError, ValueError) as exc:
+        raise RuntimeFailure(f"cannot read the gateway response: {exc}") from exc
+    if len(raw) > MAX_JSON_BODY_CHARS:
+        raise RuntimeFailure(
+            f"gateway response is larger than {MAX_JSON_BODY_CHARS} bytes"
+        )
+    return raw
+
+
+def parse_json_body(raw: bytes) -> dict:
+    try:
+        payload = json.loads(raw)
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
         raise RuntimeFailure(f"gateway response is not JSON: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise RuntimeFailure("gateway response is not a JSON object")
+    return payload
 
 
-def extract_png(payload: dict) -> bytes:
-    """從 Responses 輸出裡取出 image_generation_call 的 base64 PNG。"""
+def payload_image_b64(payload: dict) -> str:
+    """從一份完整的 Responses payload 取出第一個 image_generation_call 的 base64。"""
+    if not isinstance(payload.get("output"), list):
+        raise RuntimeFailure("gateway response has no output array")
+    found = payload_images(payload)
+    if not found:
+        raise RuntimeFailure("gateway response contains no image_generation_call result")
+    return found[0][1]
+
+
+def payload_images(payload: dict) -> list[tuple[str, str]]:
+    """payload 裡所有 image_generation_call 的 (output key, base64)，照原本順序。"""
+    found: list[tuple[str, str]] = []
     outputs = payload.get("output")
     if not isinstance(outputs, list):
-        raise RuntimeFailure("gateway response has no output array")
-    for item in outputs:
+        return found
+    for index, item in enumerate(outputs):
         if not isinstance(item, dict) or item.get("type") != "image_generation_call":
             continue
         result = item.get("result")
-        if not result:
+        if isinstance(result, str) and result:
+            found.append((output_key(item.get("id"), index), result))
+    return found
+
+
+def output_key(identifier, index) -> str:
+    """同一個 output 的事件要落在同一個 key 上。id 優先，沒有就用 index。"""
+    if isinstance(identifier, str) and identifier:
+        return f"id:{identifier}"
+    if isinstance(index, int):
+        return f"index:{index}"
+    return "output:0"
+
+
+def sse_lines(stream):
+    """逐行讀 SSE。單行與整份各有上限，所以一行不換行不會把記憶體吃光。"""
+    total = 0
+    while True:
+        try:
+            line = stream.readline(MAX_SSE_LINE_CHARS + 1)
+        except (OSError, ValueError) as exc:
+            raise RuntimeFailure(f"gateway stream ended early: {exc}") from exc
+        if not line:
+            return
+        if len(line) > MAX_SSE_LINE_CHARS:
+            raise RuntimeFailure(
+                f"gateway stream sent a line over {MAX_SSE_LINE_CHARS} bytes"
+            )
+        total += len(line)
+        if total > MAX_SSE_BODY_CHARS:
+            raise RuntimeFailure(
+                f"gateway stream is larger than {MAX_SSE_BODY_CHARS} bytes"
+            )
+        yield line
+
+
+def sse_events(stream):
+    """把行拼成一個個 event 的 data 字串。
+
+    照 SSE 的規則走：`:` 開頭是 comment（keepalive），空行結束一個 event，同一個
+    event 的多個 `data:` 用換行接起來。`event:`、`id:`、`retry:` 這裡用不到，讀掉
+    就好 —— 要認的是 data 裡的 JSON，不是事件名稱。最後一個 event 沒有以空行收尾
+    時照樣送出去。
+    """
+    data_lines: list[str] = []
+    for raw in sse_lines(stream):
+        line = raw.decode("utf-8", "replace").rstrip("\r\n")
+        if not line:
+            if data_lines:
+                yield "\n".join(data_lines)
+                data_lines = []
+            continue
+        if line.startswith(":"):
+            continue
+        field, _, value = line.partition(":")
+        if field != "data":
+            continue
+        data_lines.append(value[1:] if value.startswith(" ") else value)
+    if data_lines:
+        yield "\n".join(data_lines)
+
+
+def stream_image_b64(stream) -> str:
+    """從 SSE 事件裡挑出要寫檔的那張圖的 base64。
+
+    `partial_image_b64` 每次都是一張完整的圖，不是要接起來的 chunk，所以同一個
+    output 後到的取代先到的；收尾事件（帶 `result` 的 output item、或整份 response）
+    比 partial 完整，會蓋掉同一個 output 的 partial。多個 output 都有圖時取第一個
+    出現的，跟非 SSE 那條路一致。
+    """
+    images: dict[str, tuple[int, str]] = {}
+    order: list[str] = []
+    detail = ""
+    unparseable = 0
+    for data in sse_events(stream):
+        if not data.strip() or data.strip() == SSE_DONE:
             continue
         try:
-            data = base64.b64decode(result, validate=True)
-        except (binascii.Error, ValueError) as exc:
-            raise RuntimeFailure(f"image_generation_call result is not base64: {exc}") from exc
-        if not data.startswith(PNG_MAGIC):
-            raise RuntimeFailure("gateway returned something that is not a PNG")
-        return data
-    raise RuntimeFailure("gateway response contains no image_generation_call result")
+            event = json.loads(data)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            unparseable += 1
+            continue
+        if not isinstance(event, dict):
+            unparseable += 1
+            continue
+        detail = detail or event_error(event)
+        for key, rank, encoded in event_images(event):
+            if key not in images:
+                order.append(key)
+            if key not in images or rank >= images[key][0]:
+                images[key] = (rank, encoded)
+    if order:
+        return images[order[0]][1]
+    if detail:
+        raise RuntimeFailure(f"gateway stream reported an error: {detail}")
+    if unparseable:
+        raise RuntimeFailure(
+            f"gateway stream carried no image; {unparseable} event(s) were not JSON"
+        )
+    raise RuntimeFailure("gateway stream contains no image_generation_call result")
+
+
+def event_images(event: dict) -> list[tuple[str, int, str]]:
+    """一個 event 裡的 (output key, 完整度, base64)。完整度 1 蓋得掉 0。
+
+    只認 `image_generation_call` 這件事的四種形狀，其他一律忽略：top-level
+    `partial_image_b64`（實測回來的那種）、image_generation_call 事件 top-level 的
+    `result`、帶 `result` 的 `item`、以及整份 `response` 的 `output[]`。
+    """
+    found: list[tuple[str, int, str]] = []
+    partial = event.get("partial_image_b64")
+    if isinstance(partial, str) and partial:
+        found.append((event_output_key(event), 0, partial))
+    kind = event.get("type")
+    result = event.get("result")
+    if (
+        isinstance(kind, str)
+        and "image_generation_call" in kind
+        and isinstance(result, str)
+        and result
+    ):
+        found.append((event_output_key(event), 1, result))
+    item = event.get("item")
+    if isinstance(item, dict) and item.get("type") == "image_generation_call":
+        result = item.get("result")
+        if isinstance(result, str) and result:
+            found.append((event_output_key(event, item), 1, result))
+    response = event.get("response")
+    if isinstance(response, dict):
+        for key, encoded in payload_images(response):
+            found.append((key, 1, encoded))
+    return found
+
+
+def event_output_key(event: dict, item: dict | None = None) -> str:
+    """partial 事件用 `item_id`，output item 事件用 `item.id`；都沒有就用 index。"""
+    identifier = event.get("item_id")
+    if not (isinstance(identifier, str) and identifier) and item is not None:
+        identifier = item.get("id")
+    index = event.get("output_index")
+    return output_key(identifier, index if isinstance(index, int) else 0)
+
+
+def event_error(event: dict) -> str:
+    """event 說這次失敗時回一段短說明，其他情況回空字串。
+
+    只取 message／code／type 這種短字串，而且截斷。整個 event 不會被印出來。
+    """
+    kind = event.get("type") if isinstance(event.get("type"), str) else ""
+    candidates = [event.get("error")]
+    response = event.get("response")
+    if isinstance(response, dict):
+        candidates.append(response.get("error"))
+        candidates.append(response.get("incomplete_details"))
+    failed = kind == "error" or kind.endswith((".failed", ".incomplete"))
+    if not failed and all(candidate is None for candidate in candidates):
+        return ""
+    for candidate in candidates:
+        if isinstance(candidate, dict):
+            candidate = (
+                candidate.get("message") or candidate.get("code") or candidate.get("reason")
+            )
+        if isinstance(candidate, str) and candidate.strip():
+            return candidate.strip()[:MAX_ERROR_DETAIL_CHARS]
+    return kind
+
+
+def decode_png(encoded: str) -> bytes:
+    """base64 解成 PNG bytes。錯誤訊息不含 payload 本身。"""
+    if len(encoded) > MAX_IMAGE_B64_CHARS:
+        raise RuntimeFailure(
+            f"image result is larger than {MAX_IMAGE_B64_CHARS} base64 characters"
+        )
+    # 有的實作會把 base64 折行；validate=True 不吃空白，所以先把空白去掉。
+    compact = "".join(encoded.split())
+    if not compact:
+        raise RuntimeFailure("gateway returned an empty image result")
+    try:
+        data = base64.b64decode(compact, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise RuntimeFailure(f"image result is not base64: {exc}") from exc
+    if not data.startswith(PNG_MAGIC):
+        raise RuntimeFailure("gateway returned something that is not a PNG")
+    return data
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -445,7 +703,7 @@ def main(argv: list[str]) -> int:
 
     # day_fd 跨過 gateway 呼叫一直握著，所以寫入時的目錄就是驗過的那一個。
     try:
-        image = extract_png(call_gateway(body))
+        image = call_gateway(body)
         destination = store_png(day_fd, day, name, image)
     except InputError as exc:
         print(f"company-image: {exc}", file=sys.stderr)
