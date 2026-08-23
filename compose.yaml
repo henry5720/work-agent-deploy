@@ -58,6 +58,13 @@ services:
       # rootfs 是唯讀的，所以各給一個 named volume。
       - opencode-data:/home/node/.local/share/opencode
       - opencode-cache:/home/node/.cache
+      # OPENCODE_CONFIG_DIR 之外，OpenCode 還有自己的 state root `~/.opencode`，
+      # 一樣要在裡面寫 `.gitignore` 與 state。少這一個 mount 時 `opencode acp` 會用
+      # 同一種方式死掉：`FileSystem.writeFile (/home/node/.opencode/.gitignore)`，
+      # OpenAB 端只看到 ACP 連線關掉。所以只給這一個路徑一個 named volume，
+      # /home/node 整層維持唯讀 —— 把 home 改可寫等於把上面所有唯讀 mount 的意義拿掉。
+      # 這個路徑不是下面的 /home/node/.openab（OpenAB 自己的 state），兩個都要在。
+      - opencode-state:/home/node/.opencode
       - ./runtime/openab:/home/node/.openab:z
       - ./runtime/drafts:/home/node/drafts:z
       # One mount for the whole snapshot root: adding a repo only touches
@@ -72,5 +79,6 @@ services:
 volumes:
   claude-credentials:
   opencode-config:
+  opencode-state:
   opencode-data:
   opencode-cache:

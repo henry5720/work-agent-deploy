@@ -219,6 +219,12 @@ Claude ACP 沒有被刪掉，是保留的 rollback。切換只改
   與 state，整個目錄唯讀時 `opencode acp` 起不來；單檔唯讀讓 agent 仍然改不掉 provider 與
   permission 設定。OMO plugin 由 image 提供並固定版本，runtime 不上網抓 plugin，`autoUpdate`
   與 OpenCode `autoupdate` 都關掉。
+- OpenCode 另外有一個 state root `/home/node/.opencode`，也會在裡面寫 `.gitignore` 與 state。
+  rootfs 唯讀而這個路徑沒有 mount 時，`opencode acp` 會用跟上面同一種方式在啟動時死掉。它有
+  自己的 named volume（`opencode-state`）。這是**兩個**不同的目錄，修好 config dir 不會順便
+  修好它。`/home/node` 本身維持唯讀：把 home 整層改可寫會讓底下所有唯讀 mount 失去意義。
+- `/home/node/.opencode`（OpenCode state）與 `/home/node/.openab`（OpenAB state，bind 到
+  `runtime/openab`）是不同程式的不同目錄，只差一個字，讀 compose 時不要看混。
 - Container使用者的 uid/gid由 `HOST_UID`／`HOST_GID` build arg設定，必須等於執行 docker的 host使用者，可寫 bind mount才成立。
 - Bind mount帶 `:z`，SELinux enforcing的 host才讀得到；`z` 會 relabel來源目錄，所以 snapshot root是專用目錄。
 - Skills由 `work-helper/.claude/skills` 整個目錄掛成 `/home/node/.claude/skills`。Claude runtime

@@ -228,6 +228,9 @@ OpenCode runtime 另外驗這幾項（`deploy.sh` 也會跑同一組）：
    test ! -w /home/node/.config/opencode/oh-my-opencode-slim.json &&
    test -w /home/node/.config/opencode &&
    touch /home/node/.config/opencode/.probe && rm /home/node/.config/opencode/.probe &&
+   test -w /home/node/.opencode &&
+   touch /home/node/.opencode/.probe && rm /home/node/.opencode/.probe &&
+   test ! -w /home/node &&
    test -w /home/node/.cache &&
    test -w /home/node/.local/share/opencode &&
    grep -q "^command = \"opencode\"" /etc/openab/config.toml'
@@ -235,20 +238,30 @@ OpenCode runtime 另外驗這幾項（`deploy.sh` 也會跑同一組）：
 
 `test -w` 這幾項是SELinux label與uid都正確才會過的，Compose render成功不代表通過。
 
-`/home/node/.config/opencode` 這個目錄**必須可寫**，兩個設定檔**必須不可寫**，兩邊都要成立。
-OpenCode 自己會在 config dir 寫 `.gitignore` 與 state；整個目錄掛成唯讀時 `opencode acp` 會在
-啟動時死掉，OpenAB 端只看得到 connection closed，container log 是：
+OpenCode 有**兩個**必須可寫的目錄，各撞死過 `opencode acp` 一次。兩次的症狀一樣：OpenAB 端只
+看得到 ACP 連線關掉，真正的原因要看 container log。
 
-```
-Unexpected error: FileSystem.writeFile (/home/node/.config/opencode/.gitignore)
-```
+| 目錄 | volume | container log |
+|---|---|---|
+| `/home/node/.config/opencode`（`OPENCODE_CONFIG_DIR`） | `opencode-config` | `Unexpected error: FileSystem.writeFile (/home/node/.config/opencode/.gitignore)` |
+| `/home/node/.opencode`（OpenCode state root） | `opencode-state` | `Unexpected error; Unknown: FileSystem.writeFile (/home/node/.opencode/.gitignore)` |
 
-所以目錄是可寫的 named volume `opencode-config`，設定正本用單檔唯讀 mount 疊在上面。
+修好第一個不會順便修好第二個 —— 第二個是在第一個修完之後才浮出來的。
+
+config dir 那個目錄**必須可寫**，裡面兩個設定檔**必須不可寫**，兩邊都要成立：設定正本用單檔
+唯讀 mount 疊在可寫的 named volume 上，agent 才改不掉 provider 與 permission。
 在 `config/opencode/` 新增設定檔時要一起在 `compose.yaml` 加一行單檔 mount，否則那個檔不會
 進 container；`tests/static.sh` 會比對目錄內容與 mount 清單，漏了會擋下來。
 
-`opencode-config` 只放 OpenCode 自己生成的檔。它可以安全刪掉重建（`docker volume rm
-work-agent_opencode-config`，container 停著時做），設定不會跟著掉 —— 正本在 repo。
+`/home/node/.opencode` 沒有設定正本要疊，整個 named volume 可寫就好。不要改成把 `/home/node`
+掛成可寫來一次解決，那會讓底下的唯讀設定、skills 與 snapshot mount 全部失效；`test ! -w
+/home/node` 就是在擋這條捷徑。這個路徑不是 `/home/node/.openab`（OpenAB 自己的 state，bind 到
+`runtime/openab`），兩個都要在。
+
+`opencode-config` 與 `opencode-state` 只放 OpenCode 自己生成的檔。兩個都可以安全刪掉重建
+（`docker volume rm work-agent_opencode-config work-agent_opencode-state`，container 停著時
+做），設定不會跟著掉 —— 正本在 repo。`opencode-state` 重建會掉 OpenCode 自己的 state，不會掉
+auth（那在 `opencode-data`）。
 
 `gh` 這個 binary本身存在於 OpenAB base image內，拿掉它不是這裡的邊界。邊界是它沒有任何憑證，
 加上 runtime 的 deny 規則 —— OpenCode runtime 是 `config/opencode/opencode.json` 的

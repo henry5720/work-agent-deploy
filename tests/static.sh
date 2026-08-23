@@ -337,16 +337,22 @@ PY
 
 grep -Fq 'opencode-data:/home/node/.local/share/opencode' "$ROOT/compose.yaml"
 grep -Fq 'opencode-cache:/home/node/.cache' "$ROOT/compose.yaml"
+grep -Fq 'opencode-state:/home/node/.opencode' "$ROOT/compose.yaml"
 grep -Fq 'OPENCODE_CONFIG_DIR: /home/node/.config/opencode' "$ROOT/compose.yaml"
 
-# ------------------------------------------- OPENCODE_CONFIG_DIR must be writable
-# OpenCode writes `.gitignore` and state into its own config dir. Mounting the
-# whole directory read-only killed `opencode acp` at startup with
-# `Unexpected error: FileSystem.writeFile (/home/node/.config/opencode/.gitignore)`.
-# So the directory is a writable named volume and each config file is a separate
-# read-only bind on top: the agent still cannot rewrite provider or permission
-# settings. This parses compose.yaml as text on purpose — it has to catch the
-# mount shape on a machine with no Docker, which is where the bug shipped from.
+# --------------------------------- OpenCode's writable directories must be writable
+# OpenCode needs two writable directories and killed `opencode acp` at startup
+# once for each of them:
+#   /home/node/.config/opencode  (OPENCODE_CONFIG_DIR, mounted read-only)
+#     Unexpected error: FileSystem.writeFile (/home/node/.config/opencode/.gitignore)
+#   /home/node/.opencode         (OpenCode's own state root, not mounted at all)
+#     Unexpected error; Unknown: FileSystem.writeFile (/home/node/.opencode/.gitignore)
+# Both are now dedicated writable named volumes, and in the config dir each
+# committed config file is a separate read-only bind on top, so the agent still
+# cannot rewrite provider or permission settings. /home/node itself stays
+# read-only: widening it would undo every read-only mount below it.
+# This parses compose.yaml as text on purpose — it has to catch the mount shape
+# on a machine with no Docker, which is where both bugs shipped from.
 python3 - "$ROOT" <<'PY'
 import pathlib, re, sys
 
@@ -458,6 +464,56 @@ for name in config_files:
     assert f"test ! -w {config_dir}/{name}" in deploy, (
         f"scripts/deploy.sh does not check that {config_dir}/{name} stays read-only"
     )
+
+# 6. OpenCode's own state root. This is the second startup crash: fixing the
+#    config dir left ~/.opencode unmounted under a read-only rootfs, so
+#    `opencode acp` still died on FileSystem.writeFile and the ACP link closed.
+#    It is NOT /home/node/.openab — that is OpenAB's state bind, a different path
+#    one character apart, and the two must not be confused for each other.
+state_dir = "/home/node/.opencode"
+assert state_dir in mounts, (
+    f"nothing is mounted at {state_dir}; OpenCode writes its .gitignore and state "
+    "there and `opencode acp` dies at startup under the read-only rootfs"
+)
+source, options = mounts[state_dir]
+assert "ro" not in options, f"{state_dir} is mounted read-only; `opencode acp` cannot start"
+assert not source.startswith(("/", "./", "${")), (
+    f"{state_dir} must be a named volume so it is writable under a read-only "
+    f"rootfs, got the bind source {source!r}"
+)
+assert source in declared, f"named volume {source!r} is not declared in compose.yaml"
+assert "/home/node/.openab" in mounts, "the OpenAB state mount disappeared"
+assert mounts["/home/node/.openab"][0] != source, (
+    "/home/node/.openab and /home/node/.opencode share a source; they are different "
+    "directories for different programs"
+)
+
+# 7. Widening /home/node instead of mounting the one directory would silently make
+#    every read-only mount below it writable, so the fix must stay narrow.
+assert "/home/node" not in mounts, (
+    "compose.yaml mounts /home/node itself; a writable home undoes the read-only "
+    "config, skills and snapshot mounts underneath it"
+)
+
+# 8. Same ownership trap as the config dir: an empty named volume inherits the
+#    mount point's ownership from the image, so the directory has to exist there.
+assert re.search(rf"mkdir -p [^\n]*(?<![\w.-]){re.escape(state_dir)}(?![\w.-])", dockerfile), (
+    f"the Dockerfile must create {state_dir} so the named volume inherits node's "
+    "ownership instead of root's"
+)
+
+# 9. And deploy.sh has to prove it against a running container, with the same
+#    dotfile write that failed, not just a permission-bit check.
+assert re.search(rf"test -w {re.escape(state_dir)}(?![/\w])", deploy), (
+    f"scripts/deploy.sh does not check that {state_dir} is writable"
+)
+assert re.search(rf"touch {re.escape(state_dir)}/\.[\w-]+", deploy), (
+    f"scripts/deploy.sh does not actually write a dotfile into {state_dir}, which is "
+    "the operation that failed in production"
+)
+assert re.search(r"test ! -w /home/node(?![/\w.-])", deploy), (
+    "scripts/deploy.sh does not check that /home/node itself stayed read-only"
+)
 PY
 
 # The gateway credentials must be documented as env, never committed.

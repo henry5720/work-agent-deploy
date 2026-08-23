@@ -18,6 +18,10 @@ compose exec -T backlog-agent git --version
 compose exec -T backlog-agent /home/node/code/work-helper/bin/slack-list --help >/dev/null
 compose exec -T backlog-agent sh -lc 'test -w /home/node/.openab && test -w /home/node/drafts'
 compose exec -T backlog-agent sh -lc 'test -d /home/node/.claude/skills/slack-list && test ! -w /home/node/code'
+# Home stays read-only under both runtimes. The writable directories OpenCode needs
+# get one named volume each; widening /home/node instead would quietly make the
+# read-only config, skills and snapshot mounts underneath it writable.
+compose exec -T backlog-agent sh -lc 'test ! -w /home/node'
 
 # 生圖路徑：兩個 runtime 共用同一支 CLI，所以這幾項不放在下面的 runtime 分支裡。
 # 只驗它在、可執行、不可寫，以及 container env 有 gateway 設定；agent process 拿不拿
@@ -40,11 +44,12 @@ if [[ $OPENAB_AGENT_RUNTIME == opencode ]]; then
   compose exec -T backlog-agent sh -lc \
     "npm ls -g --depth=0 oh-my-opencode-slim | grep -qF 'oh-my-opencode-slim@$OMO_VERSION'"
   # The OMO plugin resolves from the image, so /home/node/.cache only has to be
-  # writable. The config dir itself must be writable too: OpenCode writes its own
-  # `.gitignore` and state there, and a read-only one kills `opencode acp` at
-  # startup. The committed config files stay read-only single-file mounts, so the
-  # agent cannot rewrite provider or permission settings. The touch/rm probe is
-  # the exact operation that failed, not a proxy for it.
+  # writable. Two directories must be writable as well: OPENCODE_CONFIG_DIR and
+  # OpenCode's own state root /home/node/.opencode. OpenCode writes a `.gitignore`
+  # and state into both, and a read-only one kills `opencode acp` at startup.
+  # The committed config files stay read-only single-file mounts, so the agent
+  # cannot rewrite provider or permission settings. The touch/rm probes write the
+  # exact dotfile that failed in production, not a proxy for it.
   compose exec -T backlog-agent sh -lc \
     'test -r /home/node/.config/opencode/opencode.json &&
      test -r /home/node/.config/opencode/oh-my-opencode-slim.json &&
@@ -53,6 +58,9 @@ if [[ $OPENAB_AGENT_RUNTIME == opencode ]]; then
      test -w /home/node/.config/opencode &&
      touch /home/node/.config/opencode/.deploy-write-probe &&
      rm /home/node/.config/opencode/.deploy-write-probe &&
+     test -w /home/node/.opencode &&
+     touch /home/node/.opencode/.deploy-write-probe &&
+     rm /home/node/.opencode/.deploy-write-probe &&
      test -w /home/node/.cache &&
      test -w /home/node/.local/share/opencode'
   compose exec -T backlog-agent sh -lc \
