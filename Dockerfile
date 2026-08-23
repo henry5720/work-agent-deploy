@@ -7,6 +7,8 @@ ARG OPENAB_AGENT_RUNTIME
 ARG OPENCODE_VERSION
 ARG OMO_VERSION
 ARG CODEGRAPH_VERSION
+ARG CLAUDE_AGENT_ACP_VERSION
+ARG CLAUDE_CODE_VERSION
 
 # Bind mounts carry host ownership, so the container user must share the host
 # user's uid/gid. Only /home/node and /usr/local/bin/openab are owned by the
@@ -21,23 +23,34 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends git python3 \
     && rm -rf /var/lib/apt/lists/*
 RUN npm i -g "@colbymchenry/codegraph@${CODEGRAPH_VERSION}"
+# OMO 的 Claude Code specialist 直接執行這個已固定版本的 binary，不用 npx
+# 在 runtime 下載未審核的套件。Claude rollback 也共用同一份安裝。
+RUN npm i -g "@agentclientprotocol/claude-agent-acp@${CLAUDE_AGENT_ACP_VERSION}"
+RUN npm i -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
+ENV CLAUDE_AGENT_ACP_VERSION=${CLAUDE_AGENT_ACP_VERSION} \
+    CLAUDE_AGENT_ACP_BIN=/usr/local/bin/claude-agent-acp \
+    CLAUDE_CODE_VERSION=${CLAUDE_CODE_VERSION} \
+    CLAUDE_CODE_EXECUTABLE=/usr/local/bin/claude
 
 # OpenCode 由 base image 安裝並固定版本，所以這裡只驗證它等於 versions.env 記的那一版：
 # digest 換了卻忘了更新 OPENCODE_VERSION 會直接 build 失敗，而不是安靜地跑到別的版本。
 # OMO 是 OpenCode plugin，用同一份 pin 裝成 global package，讓 runtime 不必上網抓 plugin。
-# Claude ACP rollback image 沒有 opencode，整段跳過，改驗 claude-agent-acp 存在。
+# Claude ACP specialist 直接使用 image 內固定版本的 adapter。
 RUN set -eu; \
     if [ "$OPENAB_AGENT_RUNTIME" = "opencode" ]; then \
       opencode --version | grep -qF "$OPENCODE_VERSION" \
         || { echo "opencode in base image does not match OPENCODE_VERSION=$OPENCODE_VERSION" >&2; exit 1; }; \
       npm i -g "oh-my-opencode-slim@${OMO_VERSION}"; \
-    else \
-      command -v claude-agent-acp >/dev/null \
-        || { echo "claude-agent-acp missing from the $OPENAB_AGENT_RUNTIME image" >&2; exit 1; }; \
     fi
+RUN test -x "$CLAUDE_AGENT_ACP_BIN" \
+    && test "$(command -v claude-agent-acp)" = "$CLAUDE_AGENT_ACP_BIN" \
+    && npm ls -g --depth=0 "@agentclientprotocol/claude-agent-acp@${CLAUDE_AGENT_ACP_VERSION}" >/dev/null \
+    || { echo "the pinned Claude ACP adapter is missing or mismatched" >&2; exit 1; }
+RUN test -x /usr/local/bin/claude \
+    && claude --version | grep -qF "$CLAUDE_CODE_VERSION" \
+    || { echo "the pinned Claude Code CLI is missing or mismatched" >&2; exit 1; }
 
-# 生圖／改圖的唯一入口。兩個 variant 都從這份 Dockerfile 建，所以 Claude ACP
-# rollback 拿到的是同一支 CLI，不會少掉生圖路徑。它只用 Python 3 stdlib。
+# 生圖／改圖的唯一入口。它只用 Python 3 stdlib。
 # root 擁有、0755：agent 可以執行，不能改寫（rootfs 本來就是唯讀的，這是第二層）。
 COPY agents/bin/company-image /usr/local/bin/company-image
 COPY agents/bin/slack-thread-artifact /usr/local/bin/slack-thread-artifact
@@ -54,7 +67,9 @@ RUN chmod 0755 /usr/local/bin/company-image \
 # compose 各掛一個可寫的 named volume，設定正本只用單檔唯讀疊在 config dir 上。
 # 空的 named volume 會沿用 mount point 在 image 內的 ownership，目錄不存在就會變成
 # root:root，node 寫不進去 —— 所以先建好，讓下面的 chown -R 一起接手。
-RUN mkdir -p /home/node/.config/opencode /home/node/.opencode
+# Claude Code 的 credential/state named volume 也會從這個 mount point 繼承
+# ownership；少建這個目錄時 fresh volume 會是 root:root，node 無法登入或寫 state。
+RUN mkdir -p /home/node/.claude /home/node/.config/opencode /home/node/.opencode
 
 RUN if [ "$HOST_GID" != "1000" ]; then groupmod -g "$HOST_GID" node; fi \
     && if [ "$HOST_UID" != "1000" ]; then usermod -u "$HOST_UID" -g "$HOST_GID" node; fi \

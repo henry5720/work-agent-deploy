@@ -83,8 +83,9 @@ mkdir -p runtime/openab runtime/drafts
 ./scripts/compose.sh logs --tail=100 backlog-agent
 ```
 
-預設 runtime 是 OpenCode，模型走公司 gateway 的 API key，**不需要互動式登入**。只有切回
-Claude ACP rollback 時才要 `./scripts/compose.sh exec backlog-agent claude auth login`。
+預設 runtime 是 OpenCode，模型走公司 gateway 的 API key，**不需要互動式登入**。OMO 可委派 Claude
+Code ACP specialist；它直接使用 image 內固定版 `claude-agent-acp`，不透過 runtime `npx` 下載，
+並與 rollback 共用 `claude-credentials` named volume。
 
 `env/openab.env` 至少要填入 `SLACK_BOT_TOKEN`、`SLACK_APP_TOKEN`、`SLACK_LIST_ID`、
 `SLACK_TEAM_ID`（後兩個 `slack-list` 與 `publish-slack-home.sh` 都會用，缺了會直接中止），
@@ -267,25 +268,34 @@ config dir 那個目錄**必須可寫**，裡面兩個設定檔**必須不可寫
 做），設定不會跟著掉 —— 正本在 repo。`opencode-state` 重建會掉 OpenCode 自己的 state，不會掉
 auth（那在 `opencode-data`）。
 
-`gh` 這個 binary本身存在於 OpenAB base image內，拿掉它不是這裡的邊界。邊界是它沒有任何憑證，
-加上 runtime 的 deny 規則 —— OpenCode runtime 是 `config/opencode/opencode.json` 的
-`permission.bash`，Claude rollback 是 `managed-claude-settings.json`。上面驗的是憑證，不是 binary。
+`gh` 這個 binary 本身存在於 OpenAB base image 內；這裡只確認 container 沒有提供 GitHub 憑證。
 
 接著重做 local段落的 Slack測試，再確認未授權帳號的訊息不會被處理。
 
-### 切回 Claude ACP
+### Claude Code ACP specialist 與 rollback
 
-Claude ACP 是保留的 rollback，不需要改 code：
+OMO 的 `acpAgents.claude-code` 直接執行 Docker image 內固定版 `/usr/local/bin/claude-agent-acp`，
+不會在 runtime 下載 package。首次需要 Claude 時登入一次：
+
+Claude ACP 也保留完整 rollback，不需要改 code：
+
+```bash
+./scripts/compose.sh exec backlog-agent claude auth login
+```
+
+之後由 OMO orchestrator 委派。Claude login state 保存在既有 `claude-credentials` named volume。
+
+Claude ACP 也保留 rollback，不需要改 code：
 
 ```bash
 $EDITOR config/versions.env       # OPENAB_AGENT_RUNTIME=claude
 ./tests/static.sh
 ./scripts/deploy.sh
-./scripts/compose.sh exec backlog-agent claude auth login
 ```
 
 `deploy.sh` 會換成 `OPENAB_IMAGE_CLAUDE`、改掛 `config/openab.claude-acp.toml`，並驗
-`claude-agent-acp` 存在、config 指向它。Slack allowlist 不會因為 rollback 改變 ——
+`/usr/local/bin/claude-agent-acp` 存在、config 指向它。specialist 與 rollback 共用 `claude-credentials` named
+volume；Slack allowlist 不會因為 rollback 改變 ——
 兩份 config 的 `[slack]`、`[pool]`、`[reactions]` 由 `tests/static.sh` 比對逐字相同。
 
 **改 `config/openab.toml` 的 Slack 設定時要同步改 `config/openab.claude-acp.toml`**，否則
@@ -300,10 +310,6 @@ static test 會擋下來。
 `--runtime` 只是不改檔案地 render 另一個 runtime，正式切換仍然要改 `config/versions.env`。
 **環境變數不能拿來覆蓋 runtime 或版本**：在指令前面塞 `OPENAB_AGENT_RUNTIME=...`（或任何一個
 `config/versions.env` 內的 key）會直接中止並要求改用這個 flag，理由是版本只有一份正本。
-
-Rollback 也有生圖：`company-image` 是 image 裡的一支 CLI，兩個 variant 都有，而
-`config/openab.claude-acp.toml` 同樣把 `COMPANY_GATEWAY_*` 放進 `inherit_env`。
-Rollback 也能回傳檔案：同一份 Dockerfile 會裝 `slack-thread-artifact`，兩份 permission 設定都允許它。
 
 ### 人工 release gate
 
@@ -412,12 +418,12 @@ host 端不要直接動 `runtime/drafts`。log 裡出現 `FAILED` 就是那一�
 
 版本正本只有 `config/versions.env` 一份。升級 OpenAB 時：
 
-1. 取得新版本兩個 variant 的 multi-arch digest（`-opencode` 與 `-claude` 都要，rollback 才不會
-   停在舊版）。
+1. 取得新的 OpenAB multi-arch digest。
 2. 更新 `OPENAB_VERSION`、`OPENAB_IMAGE_OPENCODE`、`OPENAB_IMAGE_CLAUDE`。
 3. 確認新 image 內的 opencode 版本，同步更新 `OPENCODE_VERSION` —— 對不上 build 會失敗，
    這是刻意的。
-4. `./tests/static.sh && ./scripts/deploy.sh`。
+4. 確認 Claude Code CLI 的 exact version，更新 `CLAUDE_CODE_VERSION`；Dockerfile 會固定安裝它。
+5. `./tests/static.sh && ./scripts/deploy.sh`。
 
 升級 OMO 時只改 `OMO_VERSION`，並把 `config/opencode/opencode.json` 的 plugin pin 與
 `config/opencode/oh-my-opencode-slim.json` 的 `$schema` 改成同一版；三處不一致 static test 會擋。

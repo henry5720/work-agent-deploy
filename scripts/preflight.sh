@@ -70,7 +70,7 @@ fi
 [[ $(stat -c '%u:%g' "$DRAFT_DIR") == "$HOST_UID:$HOST_GID" ]] || fail "$DRAFT_DIR must be owned by $HOST_UID:$HOST_GID"
 [[ $(id -u) == "$HOST_UID" ]] || fail "HOST_UID=$HOST_UID does not match the user running docker ($(id -u))"
 
-# The whole snapshot root is mounted at /home/node/code, so nothing but managed
+# The whole snapshot root is mounted at /home/node/code, so nothing but the configured
 # snapshots may live in it.
 [[ -d "$SNAPSHOT_ROOT" ]] || fail "snapshot root missing: $SNAPSHOT_ROOT (run scripts/install-sync-cron.sh)"
 [[ -d "$SNAPSHOT_ROOT/work-helper/.claude/skills" ]] || fail "missing $SNAPSHOT_ROOT/work-helper/.claude/skills (skills are mounted from there)"

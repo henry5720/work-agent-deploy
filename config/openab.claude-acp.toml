@@ -32,9 +32,7 @@ streaming = false
 
 # Claude ACP rollback。啟用方式：把 config/versions.env 的
 # OPENAB_AGENT_RUNTIME 改成 claude，再跑 ./scripts/deploy.sh。那會一併把 base image
-# 換成 OPENAB_IMAGE_CLAUDE（-claude variant 才有 claude-agent-acp）。
-# 這條路徑靠 managed-claude-settings.json 的 deny 規則守邊界，不是 OpenCode 的
-# permission 設定；兩邊的 deny 清單要一起維護。
+# 換成 OPENAB_IMAGE_CLAUDE。這是保留的 rollback config，不是預設正式 runtime。
 #
 # 這個檔案的 [slack]、[pool]、[reactions] 三節必須和 config/openab.toml 逐字相同，
 # tests/static.sh 會比對；只有 [agent] 允許不一樣。
@@ -51,6 +49,8 @@ inherit_env = [
   "SLACK_LIST_ID",
   "SLACK_TEAM_ID",
   "WORK_HELPER_ISSUE_MODE",
+  "CLAUDE_CODE_EXECUTABLE",
+  "CLAUDE_CONFIG_DIR",
 ]
 
 # 與預設 runtime 相同：只在已填 STT_BASE_URL / STT_API_KEY、且確認 endpoint 支援

@@ -24,7 +24,7 @@ Slack 待辦角色如回報對象、核准者、負責人，沿用 `work-helper/
   -> Slack DM / private channel / item 留言串
     -> deployment host
       -> 單一 OpenAB container
-        -> OpenCode ACP + OMO plugin（預設 agent runtime）
+        -> OpenCode ACP + OMO plugin（預設 agent runtime；可委派 Claude Code ACP specialist）
           -> Slack Lists API
           -> 公司 OpenAI-compatible gateway（模型與生圖）
           -> 唯讀 repo snapshots
@@ -131,8 +131,8 @@ build。理由與拒絕的替代方案見
 [`adr/0008-restricted-company-image-cli.md`](adr/0008-restricted-company-image-cli.md)。
 
 兩個 agent runtime 共用這一支 —— image 由同一份 `Dockerfile` 建置，兩份 OpenAB config 都把
-`COMPANY_GATEWAY_*` 放進 `inherit_env`，兩份 permission 清單都明列允許執行它。所以「Claude ACP
-是可用的 rollback」這句話在生圖上也成立，不是只在文件上成立。
+`COMPANY_GATEWAY_*` 放進 `inherit_env`。所以「Claude ACP 是可用的 rollback」這句話在生圖上也成立，
+不是只在文件上成立。
 
 產圖後用 `slack-thread-artifact` 回原 thread。它固定執行 `files.getUploadURLExternal → upload →
 files.completeUploadExternal`，只讀 drafts 下的 regular PNG、Markdown、HTML，且成功才刪檔。
@@ -184,8 +184,14 @@ Runtime或部署故障造成工具不能執行時，product-context bot只告知
 ## Agent Runtime 與版本
 
 預設 agent runtime 是 OpenCode 的原生 ACP（`opencode acp`），加上 oh-my-opencode-slim（OMO）
-plugin。OMO 的模型分工是 Luna retrieval、Terra synthesis，設定在
+plugin。OMO 的模型分工是 Luna retrieval、Terra synthesis；`acpAgents.claude-code` 是依 routing
+guidance 使用的 Claude Code ACP specialist，設定在
 [`../config/opencode/oh-my-opencode-slim.json`](../config/opencode/oh-my-opencode-slim.json)。
+
+Claude specialist 的 ACP adapter 是 image 內由 Docker pin 安裝的 `claude-agent-acp`，不是 runtime
+`npx` download；Claude Code CLI 也在 image 內固定版本。它與 Claude rollback 共用
+`claude-credentials` named volume。首次需要時執行一次 `claude auth login`，之後由 OMO orchestrator
+委派。
 
 Claude ACP 沒有被刪掉，是保留的 rollback。切換只改
 [`../config/versions.env`](../config/versions.env) 的 `OPENAB_AGENT_RUNTIME`：
@@ -198,7 +204,7 @@ Claude ACP 沒有被刪掉，是保留的 rollback。切換只改
 兩份 OpenAB config 的 `[slack]`、`[pool]`、`[reactions]` 必須逐字相同，`tests/static.sh` 會
 比對；只有 `[agent]` 允許不同，這樣 rollback 不會順手改掉誰能用這個 bot。
 
-所有版本（兩個 image 的 immutable digest、OpenCode、OMO、CodeGraph）集中在
+所有版本（兩個 image 的 immutable digest、OpenCode、OMO、CodeGraph、Claude ACP adapter、Claude Code CLI）集中在
 `config/versions.env`，build 不得使用 `latest`、`beta` 或 `stable`。`docker compose` 一律經
 `scripts/compose.sh` 進入，直接呼叫會因缺變數中止。Dockerfile 會在 build 時驗證 base image
 內的 OpenCode 版本等於 `OPENCODE_VERSION`。
@@ -208,14 +214,8 @@ Claude ACP 沒有被刪掉，是保留的 rollback。切換只改
 不同而且沒有任何地方會說。唯一支援的例外是 `./scripts/compose.sh --runtime <opencode|claude>`，
 它明確、只影響這一次 render，也不動檔案。
 
-唯讀邊界在兩個 runtime 由不同機制維持，兩份清單要一起維護：
-
-| runtime | 唯讀與 deny 規則正本 |
-|---|---|
-| `opencode` | `config/opencode/opencode.json` 的 `permission`（`edit: deny` 加 bash deny 清單） |
-| `claude` | `managed-claude-settings.json` |
-
-`managed-claude-settings.json` 在 OpenCode runtime 下不生效，只服務 rollback 路徑。
+`managed-claude-settings.json` 保留為 rollback runtime 的既有設定檔，唯讀掛載到
+`/home/node/.claude/settings.json`。Claude specialist 的委派設定則在 OMO 的 `acpAgents`。
 
 ## 執行與持久化
 
@@ -254,7 +254,7 @@ Claude ACP 沒有被刪掉，是保留的 rollback。切換只改
 ## 明確不做
 
 - 不把 GitHub token、SSH key或 Docker socket放進 container。
-- 不使用 claude.ai 的 MCP connectors。它們跟著登入帳號同步進 container，用的是該帳號的第三方身分（Slack、Gmail、Drive…），不受這個 agent 的 bot scopes 與 channel 邊界約束。由 `managed-claude-settings.json` 的 `disableClaudeAiConnectors` 關閉（只在 Claude rollback runtime 生效；OpenCode runtime 本來就不載入 claude.ai connectors）。
+- 不使用 claude.ai 的 MCP connectors。它們跟著登入帳號同步進 container；這個 deployment 不掛入 connectors。
 - 不建獨立 broker 或 relay，也不追求 Slack token 隔離。
 - 不接受 PDF、Office 檔、video 或 ZIP，也不自建下載解析流程。
 - 不在部署層裁 `work-helper` 的 skill catalog。
@@ -310,6 +310,6 @@ Claude ACP 沒有被刪掉，是保留的 rollback。切換只改
 - Slack app重新安裝並取得 `xapp-...`、新 `xoxb-...`。
 - 將 app顯示名稱改為「派大星教授加博士先生」。
 - 把 host專用 GitHub SSH public key加入一個能讀 `config/repos.conf` 內所有 private repos的 GitHub帳號。
-- 在 container內完成 Claude Code subscription login。
+- 首次需要時在 container 內執行一次 `claude auth login`。
 
 實際操作命令見 [`runbook.md`](runbook.md)。

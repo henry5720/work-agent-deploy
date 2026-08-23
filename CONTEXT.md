@@ -65,16 +65,17 @@ _Avoid_: 已套用的 patch、完成宣告
 _Avoid_: skill registry、registry allowlist、catalog 等於授權
 
 **agent runtime**:
-container 內實際接 ACP 的 CLI。預設是 OpenCode（`opencode acp`）搭 OMO plugin；Claude ACP
-是保留的 rollback，切換只改 `config/versions.env` 的 `OPENAB_AGENT_RUNTIME`。兩者共用同一份
-Slack 設定與同一組唯讀邊界。
-_Avoid_: Claude 已移除、兩套並行
+ container 內實際接 ACP 的 CLI。預設 OpenAB process 是 OpenCode（`opencode acp`）搭 OMO plugin；
+  OMO 另可委派固定版本的 Claude Code ACP specialist。Claude ACP rollback 仍可透過
+  `config/versions.env` 的 `OPENAB_AGENT_RUNTIME` 切換。首次需要時執行一次 `claude auth login`；
+  之後由 OMO 委派。
+_Avoid_: Claude 作為預設執行層、runtime npx download
 
 **model roles**:
-單一 OpenAB container 使用 OpenCode 搭配 OMO remote profile；OMO 由 Luna 負責 retrieval、
-Terra 負責 synthesis。每輪 OMO 不設 hard cap，但記錄 model、subagent 與 image calls 14 天並在
-異常時告警。這些角色服務 product-context bot，不改變 bot 的唯讀定位。
-_Avoid_: Claude 作為預設執行層
+ 單一 OpenAB container 使用 OpenCode 搭配 OMO remote profile；OMO 由 Luna 負責 retrieval、
+ Terra 負責 synthesis，Claude Code 只作受控 specialist。每輪 OMO 不設 hard cap，但記錄 model、
+ subagent 與 image calls 14 天並在異常時告警。這些角色服務 product-context bot，不改變 bot 的唯讀定位。
+_Avoid_: Claude 作為預設執行層、因方便而 delegate
 
 **runtime secret**:
 container 內 agent process 拿得到的憑證，目前包含 Slack bot token 與公司 gateway key。它們

@@ -19,7 +19,7 @@ repo 寫入之間的邊界不清。這個 bot 的產品責任是提供唯讀的 
   repo ZIP。
 - 遠端使用單一 OpenAB container，以 OpenCode 搭配 oh-my-opencode-slim（OMO）remote profile。
   remote profile 與本機 profile 獨立，不複製個人 paths、tools 或 secrets。
-- OMO 的模型分工固定為 Luna retrieval、Terra synthesis；Claude ACP 僅能作受控 specialist，
+- OMO 的模型分工固定為 Luna retrieval、Terra synthesis；Claude ACP 僅作 specialist，
   不是預設執行層。OMO 每輪不設 hard cap，但必須記錄 model calls、subagent calls 與 image calls
   14 天，並對異常用量告警。
 - Slack v1 只支援 native text、image、audio；PDF、Office、video、ZIP 不支援。

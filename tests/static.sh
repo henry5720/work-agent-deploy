@@ -65,9 +65,12 @@ grep -Fq 'must be owned by $HOST_UID:$HOST_GID' "$ROOT/scripts/preflight.sh"
 grep -q 'slack-list add' "$ROOT/agents/CLAUDE.md"
 grep -q '建立指派給自己的待辦' "$ROOT/config/slack-home.json"
 grep -Fq '不要派工、不要接單。' "$ROOT/agents/CLAUDE.md"
+grep -Fq 'Claude Code ACP specialist' "$ROOT/agents/CLAUDE.md"
+grep -Fq 'claude-credentials' "$ROOT/agents/CLAUDE.md"
+grep -Fq 'OMO 可委派' "$ROOT/agents/CLAUDE.md"
 grep -Fq 'git show origin/<branch>:<path>' "$ROOT/agents/CLAUDE.md"
 grep -Fq '不要 `git checkout` 或 `git switch`' "$ROOT/agents/CLAUDE.md"
-python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); assert c["disableClaudeAiConnectors"] is True' "$ROOT/managed-claude-settings.json"
+python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); assert c["disableClaudeAiConnectors"] is True; assert c["permissions"]["allow"] == ["Bash(company-image *)", "Bash(slack-thread-artifact *)"]' "$ROOT/managed-claude-settings.json"
 grep -Fq 'Bash(git checkout*)' "$ROOT/managed-claude-settings.json"
 grep -Fq 'Bash(git switch*)' "$ROOT/managed-claude-settings.json"
 
@@ -93,6 +96,8 @@ required = {
     "OPENCODE_VERSION",
     "OMO_VERSION",
     "CODEGRAPH_VERSION",
+    "CLAUDE_AGENT_ACP_VERSION",
+    "CLAUDE_CODE_VERSION",
 }
 missing = required - versions.keys()
 assert not missing, f"config/versions.env is missing {sorted(missing)}"
@@ -113,7 +118,7 @@ for key in ("OPENAB_IMAGE_OPENCODE", "OPENAB_IMAGE_CLAUDE"):
 assert versions["OPENAB_IMAGE_OPENCODE"].split("@")[0].endswith("-opencode")
 assert versions["OPENAB_IMAGE_CLAUDE"].split("@")[0].endswith("-claude")
 
-for key in ("OPENCODE_VERSION", "OMO_VERSION", "CODEGRAPH_VERSION"):
+for key in ("OPENCODE_VERSION", "OMO_VERSION", "CODEGRAPH_VERSION", "CLAUDE_AGENT_ACP_VERSION", "CLAUDE_CODE_VERSION"):
     assert re.fullmatch(r"\d+\.\d+\.\d+", versions[key]), (
         f"{key} must be an exact version, got {versions[key]!r}"
     )
@@ -140,25 +145,40 @@ grep -Fq 'ARG OPENAB_IMAGE' "$ROOT/Dockerfile"
 grep -Fq 'FROM ${OPENAB_IMAGE}' "$ROOT/Dockerfile"
 grep -Fq 'npm i -g "@colbymchenry/codegraph@${CODEGRAPH_VERSION}"' "$ROOT/Dockerfile"
 grep -Fq 'npm i -g "oh-my-opencode-slim@${OMO_VERSION}"' "$ROOT/Dockerfile"
+grep -Fq 'npm i -g "@agentclientprotocol/claude-agent-acp@${CLAUDE_AGENT_ACP_VERSION}"' "$ROOT/Dockerfile"
 grep -Fq 'grep -qF "$OPENCODE_VERSION"' "$ROOT/Dockerfile"
+grep -Fq 'command -v claude-agent-acp' "$ROOT/Dockerfile"
+grep -Fq 'CLAUDE_AGENT_ACP_BIN=/usr/local/bin/claude-agent-acp' "$ROOT/Dockerfile"
+grep -Fq 'test "$(command -v claude-agent-acp)" = "$CLAUDE_AGENT_ACP_BIN"' "$ROOT/Dockerfile"
+grep -Fq 'CLAUDE_CODE_EXECUTABLE=/usr/local/bin/claude' "$ROOT/Dockerfile"
+grep -Fq 'npm i -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"' "$ROOT/Dockerfile"
 grep -Fq 'OPENAB_IMAGE: ${OPENAB_IMAGE:?' "$ROOT/compose.yaml"
+grep -Fq 'CLAUDE_AGENT_ACP_VERSION: ${CLAUDE_AGENT_ACP_VERSION:?' "$ROOT/compose.yaml"
+grep -Fq 'CLAUDE_AGENT_ACP_BIN: /usr/local/bin/claude-agent-acp' "$ROOT/compose.yaml"
+grep -Fq 'CLAUDE_CODE_VERSION: ${CLAUDE_CODE_VERSION:?' "$ROOT/compose.yaml"
+grep -Fq 'CLAUDE_CODE_EXECUTABLE: /usr/local/bin/claude' "$ROOT/compose.yaml"
 
 # ------------------------------------------------- OpenCode ACP and rollback
-# `opencode acp` is the default; the Claude ACP config stays in the repo as a
-# rollback, not as a deleted path.
+# `opencode acp` is the default; Claude ACP is both an OMO specialist and a
+# complete rollback path, not a deleted path.
 python3 - "$ROOT" <<'PY'
-import pathlib, sys, tomllib
+import json, pathlib, sys, tomllib
 
 root = pathlib.Path(sys.argv[1])
 default = tomllib.loads((root / "config/openab.toml").read_text())
 rollback = tomllib.loads((root / "config/openab.claude-acp.toml").read_text())
+omo = json.loads((root / "config/opencode/oh-my-opencode-slim.json").read_text())
 
 assert default["agent"]["command"] == "opencode", default["agent"]["command"]
 assert default["agent"]["args"] == ["acp"], default["agent"]["args"]
 for key in ("COMPANY_GATEWAY_API_KEY", "COMPANY_GATEWAY_BASE_URL", "SLACK_BOT_TOKEN"):
     assert key in default["agent"]["inherit_env"], f"{key} is not inherited by the agent"
+for cfg in (default, rollback):
+    assert "CLAUDE_CONFIG_DIR" in cfg["agent"]["inherit_env"]
 
+claude_bin = "/usr/local/bin/claude-agent-acp"
 assert rollback["agent"]["command"] == "claude-agent-acp", rollback["agent"]["command"]
+assert omo["acpAgents"]["claude-code"]["command"] == claude_bin, omo["acpAgents"]
 assert rollback["agent"]["args"] == []
 assert rollback["agent"]["working_dir"] == "/home/node/code"
 
@@ -224,6 +244,8 @@ OPENAB_IMAGE_CLAUDE=ghcr.io/openabdev/openab:9.9.9-claude@sha256:000000000000000
 OPENCODE_VERSION=9.9.9
 OMO_VERSION=9.9.9
 CODEGRAPH_VERSION=9.9.9
+CLAUDE_AGENT_ACP_VERSION=9.9.9
+CLAUDE_CODE_VERSION=9.9.9
 AMBIENT
 
 # An ambient value that agrees with the file is not an override, and must keep
@@ -264,6 +286,11 @@ fi
 grep -Fq 'opencode --version | grep -qF' "$ROOT/scripts/deploy.sh"
 grep -Fq 'npm ls -g --depth=0 oh-my-opencode-slim' "$ROOT/scripts/deploy.sh"
 grep -Fq 'command -v claude-agent-acp' "$ROOT/scripts/deploy.sh"
+grep -Fq 'test "$CLAUDE_AGENT_ACP_BIN" = /usr/local/bin/claude-agent-acp' "$ROOT/scripts/deploy.sh"
+grep -Fq 'test "$CLAUDE_CODE_EXECUTABLE" = /usr/local/bin/claude' "$ROOT/scripts/deploy.sh"
+grep -Fq '"$CLAUDE_CODE_EXECUTABLE" --version | grep -qF "$CLAUDE_CODE_VERSION"' "$ROOT/scripts/deploy.sh"
+grep -Fq 'test -w /home/node/.claude' "$ROOT/scripts/deploy.sh"
+grep -Fq 'touch /home/node/.claude/.deploy-write-probe' "$ROOT/scripts/deploy.sh"
 grep -Fq 'test -w /home/node/.local/share/opencode' "$ROOT/scripts/deploy.sh"
 
 # deploy.sh must not read as "everything is verified". It has to name what it did
@@ -335,6 +362,13 @@ for agent, cfg in preset.items():
         "opencode.json does not declare"
     )
 assert omo["companion"]["enabled"] is False, "no desktop window in a container"
+
+# Claude Code is an OMO specialist inside this same container. It invokes the
+# image-installed adapter directly; runtime npx download is not allowed.
+claude_agent = omo["acpAgents"]["claude-code"]
+assert claude_agent["command"] == "/usr/local/bin/claude-agent-acp", claude_agent
+assert claude_agent["args"] == [], claude_agent
+assert "npx" not in json.dumps(claude_agent), claude_agent
 # The work-helper catalog is not trimmed here: no agent narrows skills or MCPs,
 # and no catalog-level disable list exists.
 for agent, cfg in preset.items():
@@ -351,6 +385,8 @@ grep -Fq 'opencode-data:/home/node/.local/share/opencode' "$ROOT/compose.yaml"
 grep -Fq 'opencode-cache:/home/node/.cache' "$ROOT/compose.yaml"
 grep -Fq 'opencode-state:/home/node/.opencode' "$ROOT/compose.yaml"
 grep -Fq 'OPENCODE_CONFIG_DIR: /home/node/.config/opencode' "$ROOT/compose.yaml"
+grep -Fq 'claude-credentials:/home/node/.claude' "$ROOT/compose.yaml"
+grep -Fq 'CLAUDE_CONFIG_DIR: /home/node/.claude' "$ROOT/compose.yaml"
 
 # --------------------------------- OpenCode's writable directories must be writable
 # OpenCode needs two writable directories and killed `opencode acp` at startup
@@ -453,12 +489,28 @@ assert not stale, f"compose.yaml mounts paths that config/opencode does not have
 #    If the Dockerfile does not create the directory it lands as root:root and the
 #    writable volume is writable by nobody.
 dockerfile = (root / "Dockerfile").read_text()
-assert f"mkdir -p {config_dir}" in dockerfile, (
+assert re.search(rf"mkdir -p [^\n]*{re.escape(config_dir)}", dockerfile), (
     f"the Dockerfile must create {config_dir} so the named volume inherits node's "
     "ownership instead of root's"
 )
 assert re.search(r'chown -R "\$HOST_UID:\$HOST_GID" /home/node\b', dockerfile), (
     "the Dockerfile no longer chowns /home/node to the host uid"
+)
+
+# 4a. Claude Code's credential/state volume has the same fresh-volume ownership
+#     requirement. Keep the existing rollback settings mount as a child file.
+claude_dir = "/home/node/.claude"
+assert claude_dir in mounts, f"nothing is mounted at {claude_dir}"
+source, options = mounts[claude_dir]
+assert source == "claude-credentials", source
+assert "ro" not in options, f"{claude_dir} is mounted read-only"
+assert source in declared, f"named volume {source!r} is not declared in compose.yaml"
+settings = f"{claude_dir}/settings.json"
+assert settings in mounts
+assert mounts[settings][0] == "./managed-claude-settings.json"
+assert "ro" in mounts[settings][1]
+assert re.search(rf"mkdir -p [^\n]*{re.escape(claude_dir)}", dockerfile), (
+    f"the Dockerfile must create {claude_dir} so a fresh Claude volume inherits node ownership"
 )
 
 # 5. deploy.sh has to prove all of this against a running container, both ways.
@@ -526,7 +578,22 @@ assert re.search(rf"touch {re.escape(state_dir)}/\.[\w-]+", deploy), (
 assert re.search(r"test ! -w /home/node(?![/\w.-])", deploy), (
     "scripts/deploy.sh does not check that /home/node itself stayed read-only"
 )
+assert re.search(rf"test -w {re.escape(claude_dir)}(?![/\w])", deploy), (
+    f"scripts/deploy.sh does not check that {claude_dir} is writable"
+)
+assert re.search(rf"touch {re.escape(claude_dir)}/\.[\w-]+", deploy), (
+    f"scripts/deploy.sh does not write a probe into {claude_dir}"
+)
 PY
+
+grep -Fq 'CLAUDE_CODE_EXECUTABLE: /usr/local/bin/claude' "$ROOT/compose.yaml"
+if grep -R -n -F 'permissionMode": "ask"' \
+  "$ROOT/config" "$ROOT/agents" "$ROOT/docs" "$ROOT/README.md" "$ROOT/CLAUDE.md" ||
+   grep -R -n -F '只有在通過 delegation gate' \
+  "$ROOT/config" "$ROOT/agents" "$ROOT/docs" "$ROOT/README.md" "$ROOT/CLAUDE.md"; then
+  printf 'Claude ACP policy still relies on an interactive or prompt-enforced gate.\n' >&2
+  exit 1
+fi
 
 # The gateway credentials must be documented as env, never committed.
 grep -q '^COMPANY_GATEWAY_BASE_URL=' "$ROOT/env/openab.env.example"

@@ -1,4 +1,4 @@
-# 用單一受限 container 跑 OpenCode + OMO，保留 Claude ACP 切回路徑
+# 用單一受限 container 跑 OpenCode + OMO，加入 Claude ACP specialist
 
 ## Status
 
@@ -24,15 +24,19 @@ agent 手上並不改變它能做什麼。
 - 不追求 Slack token 隔離。實際邊界是 Slack allowlist、唯讀 snapshot mount、OpenCode 的
   `permission` 設定與 agent 規則，不是 token 放在哪個 process。
 - OpenAB 預設 agent 改成 `opencode acp`（`config/openab.toml`）。
-- Claude ACP 是保留的 rollback，不是刪掉的路徑：`config/openab.claude-acp.toml` 留在 repo，
-  切換只改 `config/versions.env` 的 `OPENAB_AGENT_RUNTIME`，image 與 config 會一起換。
+- Claude ACP adapter 以固定版本的 `@agentclientprotocol/claude-agent-acp` 安裝在同一個 image，
+  作為 OMO 可委派的 specialist；Claude Code CLI 也由 Docker 以 exact version 安裝到
+  `/usr/local/bin/claude`。
+  `config/openab.claude-acp.toml` 仍保留為完整 rollback，切換只改 `config/versions.env` 的
+  `OPENAB_AGENT_RUNTIME`，image 與 config 會一起換。specialist 不使用 runtime `npx` download。
   兩份 config 的 `[slack]`、`[pool]`、`[reactions]` 必須逐字相同，由 `tests/static.sh` 比對。
 - 所有版本集中在 `config/versions.env`，包含兩個 OpenAB image 的 immutable digest、
-  OpenCode、OMO 與 CodeGraph 的數字版本。build 不得使用 `latest`、`beta`、`stable`。
+  OpenCode、OMO、CodeGraph、Claude ACP adapter 與 Claude Code CLI 的數字版本。build 不得
+  使用 `latest`、`beta`、`stable`。
   `docker compose` 只能透過 `scripts/compose.sh` 進入，直接呼叫會因缺變數而中止。
 - OpenCode 與 OMO 的遠端設定維持最小：`config/opencode/opencode.json` 只設 provider、模型、
   instructions、skills 路徑與 permission；`config/opencode/oh-my-opencode-slim.json` 只設
-  preset 模型分工與關掉 container 內用不到的功能。
+  preset 模型分工、Claude ACP specialist 與關掉 container 內用不到的功能。
 - 不在部署層裁 catalog。skills 仍是 `work-helper/.claude/skills` 整個目錄的唯讀 mount，OMO 的
   agent 都保留 `skills: ["*"]` 與 `mcps: ["*"]`。行為限制寫在 `agents/CLAUDE.md`，不用
   mount-level 或 config-level 的 allowlist 表達。
@@ -43,15 +47,15 @@ agent 手上並不改變它能做什麼。
 
 - 只有一個 container 要建、要驗、要排障，OpenCode + OMO 能不能用可以單獨判斷。
 - 代價是所有 runtime secret 共用一個失效邊界：container 被攻破等於 Slack bot token 與 gateway
-  key 同時外洩。這是明確接受的取捨，不能描述成「已隔離」。
-- Rollback 是一個變數的事，而且 rollback config 會被測試盯著不漂移；但也代表兩份 OpenAB
-  config 與兩套 deny 規則（OpenCode `permission`、`managed-claude-settings.json`）要一起維護。
+  key 同時外洩。這是明確接受的取捨。
+- Rollback 是一個變數的事，而且 rollback config 會被測試盯著不漂移；也代表兩份 OpenAB
+  config 要一起維護。
 - 版本集中在一個檔案讓升級 review 有唯一入口，Dockerfile 會在 build 時驗證 base image 內的
   OpenCode 版本等於 `OPENCODE_VERSION`，digest 換了卻忘了改版本會 build 失敗。
 - 強制走 `scripts/compose.sh` 讓版本不可繞過，但也代表所有既有的 `docker compose` 手動指令
   都要改，`docs/runbook.md` 是唯一正本。
 - 不裁 catalog 讓 `work-helper` 新增 skill 不必改這個 repo，代價是環境跑不動的 skill 只能靠
   `agents/CLAUDE.md` 的文字擋，不是靠設定擋。
-- `managed-claude-settings.json` 在 OpenCode runtime 下完全不生效。唯讀邊界改由
-  `config/opencode/opencode.json` 的 `permission.edit = "deny"` 與 bash deny 清單負責；兩份
-  清單要對齊，否則 rollback 前後的邊界會不一樣。
+- Claude specialist 與 rollback 共用既有的 `claude-credentials` named volume，保存 Claude
+  credential/state。首次需要時執行一次 `claude auth login`，之後由 OMO 委派。不新增 container、
+  broker 或 relay。

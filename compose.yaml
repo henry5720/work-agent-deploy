@@ -13,6 +13,8 @@ services:
         OPENCODE_VERSION: ${OPENCODE_VERSION:?run ./scripts/compose.sh, not docker compose}
         OMO_VERSION: ${OMO_VERSION:?run ./scripts/compose.sh, not docker compose}
         CODEGRAPH_VERSION: ${CODEGRAPH_VERSION:?run ./scripts/compose.sh, not docker compose}
+        CLAUDE_AGENT_ACP_VERSION: ${CLAUDE_AGENT_ACP_VERSION:?run ./scripts/compose.sh, not docker compose}
+        CLAUDE_CODE_VERSION: ${CLAUDE_CODE_VERSION:?run ./scripts/compose.sh, not docker compose}
         HOST_UID: ${HOST_UID:-1000}
         HOST_GID: ${HOST_GID:-1000}
     image: work-agent-openab:${OPENAB_VERSION}-${OPENAB_AGENT_RUNTIME}
@@ -23,6 +25,10 @@ services:
         required: false
     environment:
       CLAUDE_CONFIG_DIR: /home/node/.claude
+      CLAUDE_AGENT_ACP_VERSION: ${CLAUDE_AGENT_ACP_VERSION:?run ./scripts/compose.sh, not docker compose}
+      CLAUDE_AGENT_ACP_BIN: /usr/local/bin/claude-agent-acp
+      CLAUDE_CODE_VERSION: ${CLAUDE_CODE_VERSION:?run ./scripts/compose.sh, not docker compose}
+      CLAUDE_CODE_EXECUTABLE: /usr/local/bin/claude
       OPENCODE_CONFIG_DIR: /home/node/.config/opencode
       CODEGRAPH_TELEMETRY: "0"
     read_only: true
@@ -52,8 +58,9 @@ services:
       - opencode-config:/home/node/.config/opencode
       - ./config/opencode/opencode.json:/home/node/.config/opencode/opencode.json:ro,z
       - ./config/opencode/oh-my-opencode-slim.json:/home/node/.config/opencode/oh-my-opencode-slim.json:ro,z
-      - ./managed-claude-settings.json:/home/node/.claude/settings.json:ro,z
+      # Claude Code credential/state volume；settings 仍是既有 rollback runtime 的設定檔。
       - claude-credentials:/home/node/.claude
+      - ./managed-claude-settings.json:/home/node/.claude/settings.json:ro,z
       # OpenCode 的 auth、session storage 與 plugin/npm cache 必須可寫，而
       # rootfs 是唯讀的，所以各給一個 named volume。
       - opencode-data:/home/node/.local/share/opencode

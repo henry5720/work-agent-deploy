@@ -42,6 +42,16 @@
       }
     }
   },
+  "acpAgents": {
+    "claude-code": {
+      "command": "/usr/local/bin/claude-agent-acp",
+      "args": [],
+      "description": "Claude Code specialist；由 OMO orchestrator 在需要時 delegate。",
+      "orchestratorPrompt": "@claude-code\n- Role: Claude Code specialist。\n- OMO orchestrator 可在需要時 delegate。",
+      "wrapperModel": "company/gpt-5.6-luna",
+      "timeoutMs": 0
+    }
+  },
   "image_routing": "direct",
   "companion": { "enabled": false },
   "multiplexer": { "type": "none" },
