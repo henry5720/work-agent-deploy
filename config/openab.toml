@@ -45,6 +45,8 @@ inherit_env = [
   "OPENCODE_CONFIG_DIR",
   "CLAUDE_CODE_EXECUTABLE",
   "CLAUDE_CONFIG_DIR",
+  "PARSE_DOCUMENT_ALLOWED_HOST",
+  "DOCLING_ARTIFACTS_PATH",
   "SLACK_BOT_TOKEN",
   "SLACK_LIST_ID",
   "SLACK_TEAM_ID",
@@ -60,6 +62,19 @@ api_key = "${STT_API_KEY}"
 base_url = "${STT_BASE_URL}"
 model = "whisper-large-v3-turbo"
 echo_transcript = false
+
+[filestore]
+# Incoming attachments use Cloudflare R2. Credentials stay in the deployment
+# host's env/openab.env and are interpolated at runtime; never put their values
+# here.
+bucket = "work-agent-attachments"
+endpoint = "https://99de68928da234ebcf0c9370443ad7ee.r2.cloudflarestorage.com"
+region = "auto"
+prefix = "incoming/"
+presigned_ttl = 3600
+max_file_size_mb = 50
+access_key_id = "${R2_ACCESS_KEY_ID}"
+secret_access_key = "${R2_SECRET_ACCESS_KEY}"
 
 [pool]
 max_sessions = 10

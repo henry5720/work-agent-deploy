@@ -46,8 +46,8 @@
     "claude-code": {
       "command": "/usr/local/bin/claude-agent-acp",
       "args": [],
-      "description": "Claude Code specialist；由 OMO orchestrator 在需要時 delegate。",
-      "orchestratorPrompt": "@claude-code\n- Role: Claude Code specialist。\n- OMO orchestrator 可在需要時 delegate。",
+      "description": "Claude Code specialist；Slack 訊息以 `delegate claude-code:` 開頭時必須委派。",
+      "orchestratorPrompt": "@claude-code\n- Role: Claude Code specialist。\n- Deterministic Slack trigger: when the incoming user message starts exactly with `delegate claude-code:`, strip that prefix and delegate the complete remaining task to @claude-code immediately. Do not answer with the local agent, use local tools first, or silently reroute the task. If delegation cannot run, report the delegation failure.\n- Messages without that exact prefix keep normal OMO automatic routing.",
       "wrapperModel": "company/gpt-5.6-luna",
       "timeoutMs": 0
     }

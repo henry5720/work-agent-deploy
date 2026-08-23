@@ -9,6 +9,7 @@ ARG OMO_VERSION
 ARG CODEGRAPH_VERSION
 ARG CLAUDE_AGENT_ACP_VERSION
 ARG CLAUDE_CODE_VERSION
+ARG DOCLING_VERSION
 
 # Bind mounts carry host ownership, so the container user must share the host
 # user's uid/gid. Only /home/node and /usr/local/bin/openab are owned by the
@@ -20,8 +21,20 @@ USER root
 # git：-opencode base image（node:22-trixie-slim）沒有 git，但唯讀 snapshot 偵察
 # 全靠 `git show origin/<branch>:<path>` 這類指令。python3：slack-list 需要。
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends git python3 \
+    && apt-get install -y --no-install-recommends curl git python3 python3-pip \
     && rm -rf /var/lib/apt/lists/*
+RUN python3 -c 'import sys; assert (3, 10) <= sys.version_info[:2] < (3, 14), sys.version' \
+    && python3 -m pip install --no-cache-dir --break-system-packages "docling==${DOCLING_VERSION}" \
+    && python3 -c 'import docling; import docling.document_converter'
+ENV DOCLING_ARTIFACTS_PATH=/opt/docling-models
+RUN mkdir -p /opt/docling-models \
+    && docling-tools models download --output-dir /opt/docling-models \
+    && python3 -c 'from pathlib import Path; p=Path("/opt/docling-models"); assert p.is_dir() and any(p.iterdir()), "Docling model download produced no artifacts"' \
+    && chmod -R a+rX,a-w /opt/docling-models \
+    && chown -R root:root /opt/docling-models
+USER node
+RUN python3 -c 'from pathlib import Path; import os; p=Path("/opt/docling-models"); assert p.is_dir() and any(p.iterdir()); assert all(os.access(item, os.R_OK | (os.X_OK if item.is_dir() else 0)) for item in p.rglob("*")), "Docling artifacts are not readable by node"'
+USER root
 RUN npm i -g "@colbymchenry/codegraph@${CODEGRAPH_VERSION}"
 # OMO 的 Claude Code specialist 直接執行這個已固定版本的 binary，不用 npx
 # 在 runtime 下載未審核的套件。Claude rollback 也共用同一份安裝。
@@ -54,13 +67,14 @@ RUN test -x /usr/local/bin/claude \
 # root 擁有、0755：agent 可以執行，不能改寫（rootfs 本來就是唯讀的，這是第二層）。
 COPY agents/bin/company-image /usr/local/bin/company-image
 COPY agents/bin/slack-thread-artifact /usr/local/bin/slack-thread-artifact
+COPY agents/bin/parse-document /usr/local/bin/parse-document
 RUN chmod 0755 /usr/local/bin/company-image \
     && chown root:root /usr/local/bin/company-image \
     && chmod 0755 /usr/local/bin/slack-thread-artifact \
     && chown root:root /usr/local/bin/slack-thread-artifact \
-    && python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)' \
-    && company-image --help >/dev/null \
-    && slack-thread-artifact --help >/dev/null
+    && chmod 0755 /usr/local/bin/parse-document \
+    && chown root:root /usr/local/bin/parse-document \
+    && python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)'
 
 # OpenCode 有兩個必須可寫的目錄：OPENCODE_CONFIG_DIR（/home/node/.config/opencode）
 # 與它自己的 state root /home/node/.opencode，兩邊都會寫 `.gitignore` 與 state。
@@ -75,3 +89,6 @@ RUN if [ "$HOST_GID" != "1000" ]; then groupmod -g "$HOST_GID" node; fi \
     && if [ "$HOST_UID" != "1000" ]; then usermod -u "$HOST_UID" -g "$HOST_GID" node; fi \
     && chown -R "$HOST_UID:$HOST_GID" /home/node /usr/local/bin/openab
 USER node
+RUN company-image --help >/dev/null \
+    && slack-thread-artifact --help >/dev/null \
+    && parse-document --help >/dev/null

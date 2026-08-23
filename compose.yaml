@@ -15,6 +15,7 @@ services:
         CODEGRAPH_VERSION: ${CODEGRAPH_VERSION:?run ./scripts/compose.sh, not docker compose}
         CLAUDE_AGENT_ACP_VERSION: ${CLAUDE_AGENT_ACP_VERSION:?run ./scripts/compose.sh, not docker compose}
         CLAUDE_CODE_VERSION: ${CLAUDE_CODE_VERSION:?run ./scripts/compose.sh, not docker compose}
+        DOCLING_VERSION: ${DOCLING_VERSION:?run ./scripts/compose.sh, not docker compose}
         HOST_UID: ${HOST_UID:-1000}
         HOST_GID: ${HOST_GID:-1000}
     image: work-agent-openab:${OPENAB_VERSION}-${OPENAB_AGENT_RUNTIME}
@@ -31,6 +32,10 @@ services:
       CLAUDE_CODE_EXECUTABLE: /usr/local/bin/claude
       OPENCODE_CONFIG_DIR: /home/node/.config/opencode
       CODEGRAPH_TELEMETRY: "0"
+      DOCLING_ARTIFACTS_PATH: /opt/docling-models
+      # parse-document only accepts attachment URLs from this R2 host. This
+      # is a host allowlist, not an R2 credential or an API validation.
+      PARSE_DOCUMENT_ALLOWED_HOST: 99de68928da234ebcf0c9370443ad7ee.r2.cloudflarestorage.com
     read_only: true
     security_opt:
       - no-new-privileges:true

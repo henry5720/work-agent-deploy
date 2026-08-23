@@ -13,7 +13,67 @@
       "type": "section",
       "text": {
         "type": "mrkdwn",
-        "text": "*把 Slack 待辦、PM 留言和程式碼現況接起來的 backlog 助理*\n我會幫你查清楚現在怎麼運作，並把既有待辦整理成可決策的 issue 草稿。一般回覆預設講白話；想看檔案、API 或 code 時直接說。"
+        "text": "*把 Slack 待辦、PM 留言和程式碼現況接起來的工作助理*\n用白話回答問題、整理待辦，也能把查到的內容做成可直接使用的檔案。"
+      }
+    },
+    {
+      "type": "section",
+      "fields": [
+        {
+          "type": "mrkdwn",
+          "text": "*目前能讀取*\n• 文字訊息\n• 圖片與截圖\n• repo snapshot\n• Slack Lists 待辦與留言"
+        },
+        {
+          "type": "mrkdwn",
+          "text": "*目前能產出*\n• 訊息本文\n• PNG 圖片\n• Markdown 附件\n• HTML prototype"
+        }
+      ]
+    },
+    {
+      "type": "context",
+      "elements": [
+        {
+          "type": "mrkdwn",
+          "text": "想讓 Claude Code 執行任務，請明確寫：`delegate claude-code: <任務>`"
+        }
+      ]
+    },
+    {
+      "type": "divider"
+    },
+    {
+      "type": "section",
+      "text": {
+        "type": "mrkdwn",
+        "text": "*1. 查 Slack Lists 與 PM 回覆*\n我會依照目前說話的人查指派事項，也能搜尋待辦、讀取某一列的完整留言，或整理 PM 的回覆。\n• `看一下我還有哪些待辦事項`\n• `我的待辦裡，哪些跟庫存有關？`\n• `PM 有沒有回我？`\n• `讀取這一列的留言並整理重點`"
+      }
+    },
+    {
+      "type": "section",
+      "text": {
+        "type": "mrkdwn",
+        "text": "*2. 建立與整理待辦*\n在 DM 或已邀請 bot 的 channel 明確說要新增待辦，我會保存來源、指派給你並回傳待辦列連結；同名未完成事項不會重複建列。\n• `新增待辦：庫存匯出缺少批號`\n• `把這段整理成待辦，回報給 @PM`\n• `新增待辦，週五到期：退貨表缺少供應商欄位`"
+      }
+    },
+    {
+      "type": "section",
+      "text": {
+        "type": "mrkdwn",
+        "text": "*3. 查 repo 現況*\n我會讀取最近同步的 repo snapshot 與文件，確認問題是否存在、目前行為、相關檔案和可能的影響範圍。\n• `PM 說新增調撥後還要手動確認，現在真的有這個問題嗎？請用白話回答`\n• `比較 frontend 和 backend 的 shipped_at 定義`\n• `登入失敗可能經過哪些流程？請告訴我相關檔案`"
+      }
+    },
+    {
+      "type": "section",
+      "text": {
+        "type": "mrkdwn",
+        "text": "*4. 產出可用檔案*\n把需求說清楚，我可以將結果整理成訊息、PNG、Markdown，或明確要求的單一檔案 HTML prototype。\n• `把這份流程整理成 Markdown`\n• `做一張 PNG 流程圖`\n• `做成單一檔案的 HTML prototype`\n• `delegate claude-code: 檢查登入失敗的相關檔案並整理結果`"
+      }
+    },
+    {
+      "type": "section",
+      "text": {
+        "type": "mrkdwn",
+        "text": "*5. 把既有待辦準備成可決策草稿*\n我會先讀待辦列、PM 留言和相關 repos，再整理現況、改動範圍、驗收方式與尚未定案的地方。完成後，草稿附件和人工 GitHub 連結會回到同一個 item 留言串。\n• 在待辦列留言：`@派大星教授加博士先生 偵察這列，確認問題是否存在並準備 issue 草稿`\n• 一般對話：`分析這幾件待辦，整理到可以決定是否開 issue`"
       }
     },
     {
@@ -23,38 +83,7 @@
       "type": "section",
       "text": {
         "type": "mrkdwn",
-        "text": "*1. 查待辦與 PM 回覆*\n依照目前說話的人查指派事項，也能搜尋待辦內容、讀取某一列的完整留言，或指定某一列驗收時要通知誰。\n• `看一下我還有哪些待辦事項`\n• `我的待辦裡，哪些跟庫存有關？`\n• `PM 有沒有回我？`\n• `這一列以後回報給我`"
-      }
-    },
-    {
-      "type": "section",
-      "text": {
-        "type": "mrkdwn",
-        "text": "*2. 建立指派給自己的待辦*\n在 DM 或已邀請 bot 的 channel 明確說要新增待辦，我會保存來源、指派給你並回傳待辦列連結；同名未完成事項不會重複建列。\n• `新增待辦：庫存匯出缺少批號`\n• `把這段整理成待辦，回報給 @PM`\n• `新增待辦，週五到期：退貨表缺少供應商欄位`"
-      }
-    },
-    {
-      "type": "section",
-      "text": {
-        "type": "mrkdwn",
-        "text": "*3. 查產品與程式碼現況*\n讀取最近同步的 frontend、三個 backend 與文件 snapshot，確認問題是否存在、目前行為，以及可能的影響範圍。\n• `PM 說新增調撥後還要手動確認，現在真的有這個問題嗎？請用白話回答`\n• `比較 frontend 和 backend 的 shipped_at 定義`\n• `登入失敗可能經過哪些流程？請告訴我相關檔案`"
-      }
-    },
-    {
-      "type": "section",
-      "text": {
-        "type": "mrkdwn",
-        "text": "*4. 把既有待辦準備成可決策草稿*\n我會先讀待辦列、PM 留言和相關 repos，再整理現況、改動範圍、驗收方式與尚未定案的地方。完成後，草稿附件和人工 GitHub 連結會回到同一個 item 留言串。\n• 在待辦列留言：`@派大星教授加博士先生 偵察這列，確認問題是否存在並準備 issue 草稿`\n• 一般對話：`分析這幾件待辦，整理到可以決定是否開 issue`"
-      }
-    },
-    {
-      "type": "divider"
-    },
-    {
-      "type": "section",
-      "text": {
-        "type": "mrkdwn",
-        "text": "*從哪裡開始？*\n• *整張表*：<https://shuchenai-rdpm.slack.com/lists/${SLACK_TEAM_ID}/${SLACK_LIST_ID}|Bug/需求總表>（直接看、直接改，不用經過我）\n• *訊息分頁（DM）*：建立或查自己的待辦、讀 PM 回覆、詢問 repo 現況。\n• *已邀請 bot 的 channel*：@ 我建立待辦或提問，後續留在同一個 thread。\n• *待辦列的 item 留言串*：最適合偵察；我能自動知道是哪一列，不用再貼 `Rec...`。\n只有「Bug/需求總表」裡已存在的待辦列能交付 issue 草稿；口述的新需求可以先請我建立待辦列。"
+        "text": "*從哪裡開始？*\n• *整張表*：<https://shuchenai-rdpm.slack.com/lists/${SLACK_TEAM_ID}/${SLACK_LIST_ID}|Bug/需求總表>（直接看、直接改，不用經過我）\n• *訊息分頁（DM）*：建立或查自己的待辦、讀 PM 回覆、詢問 repo 現況，或要求產出檔案。\n• *已邀請 bot 的 channel*：@ 我建立待辦或提問，後續留在同一個 thread。\n• *待辦列的 item 留言串*：最適合偵察；我能自動知道是哪一列，不用再貼 `Rec...`。\n只有「Bug/需求總表」裡已存在的待辦列能交付 issue 草稿；口述的新需求可以先請我建立待辦列。"
       }
     },
     {
@@ -65,7 +94,7 @@
       "elements": [
         {
           "type": "mrkdwn",
-          "text": "看得懂的附件只有文字、圖片、音訊；PDF、Office 檔、影片、ZIP 請改貼文字或截圖。回覆會是訊息本文、PNG 圖片或 Markdown 附件，明確要求可互動 prototype 時才給單一檔案的 HTML，產物都回同一個對話串。\n能力邊界：repo snapshot 唯讀；不修改 code、不建立 GitHub issue、不 push、不更動待辦狀態，也不通知 PM 驗收。Snapshot 代表最近一次同步成功的內容，不一定等於 GitHub 當下狀態。"
+          "text": "附件支援文字、圖片、PDF、DOCX、XLSX、PPTX；OpenAB 會把 R2 presigned URL 與 filename 注入 ACP prompt，agent 以 `parse-document <url> <filename>` 轉成 Markdown 後回答。URL 有效 1 小時、單檔上限 50 MiB。這個 URL trust boundary 已獲明確同意，會隨 prompt 傳給 company gateway；只接受 OpenAB 提供的 URL，host gate 不是 credential。ZIP 只會安全列出檔名，影片仍不支援。產物會回到同一個對話串。\n能力邊界：repo snapshot 唯讀；不修改 code、不建立 GitHub issue、不 push、不更動待辦狀態，也不通知 PM 驗收。Snapshot 代表最近一次同步成功的內容，不一定等於 GitHub 當下狀態。"
         }
       ]
     }

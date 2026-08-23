@@ -25,9 +25,10 @@ Slack 待辦角色如回報對象、核准者、負責人，沿用 `work-helper/
     -> deployment host
       -> 單一 OpenAB container
         -> OpenCode ACP + OMO plugin（預設 agent runtime；可委派 Claude Code ACP specialist）
-          -> Slack Lists API
-          -> 公司 OpenAI-compatible gateway（模型與生圖）
-          -> 唯讀 repo snapshots
+           -> Slack Lists API
+           -> 公司 OpenAI-compatible gateway（模型與生圖）
+           -> Cloudflare R2 filestore（incoming attachments）
+           -> 唯讀 repo snapshots
           -> 可寫 `/home/node/drafts` 目錄
 
 GitHub
@@ -107,8 +108,8 @@ Working tree停在基準 branch，但 `.git`內保有完整的 `origin/*` refs�
 
 ## 輸入與輸出邊界
 
-Slack v1 只接受 native 的 text、image、audio。PDF、Office 檔、video 與 ZIP 不支援，收到時
-bot 直接說明不支援，不進入任何自訂下載或解析流程。
+Slack v1 的 native 輸入是 text、image、audio；PDF、DOCX、XLSX、PPTX 另外走 OpenAB 的 R2
+文件流程，ZIP 只安全列檔，video 仍直接說明不支援。
 
 輸出限於三種：Slack 訊息本文、PNG 圖片產物、Markdown（handoff 或 issue 草稿附件）。
 self-contained HTML 只有在使用者明確要求 prototype 或可互動頁面時才輸出，而且必須是單一檔案。
@@ -118,6 +119,25 @@ self-contained HTML 只有在使用者明確要求 prototype 或可互動頁面�
 Slack 傳進來的圖片要到得了模型，靠的是
 [`../config/opencode/opencode.json`](../config/opencode/opencode.json) 裡模型的
 `modalities.input` 含 `image`。
+
+OpenAB 的 incoming attachment filestore 使用 Cloudflare R2。兩份 runtime config 的設定完全
+相同：bucket `work-agent-attachments`、endpoint
+`https://99de68928da234ebcf0c9370443ad7ee.r2.cloudflarestorage.com`、region `auto`、prefix
+`incoming/`、presigned URL TTL 3600 秒與單檔上限 **50 MiB**。R2 access key 與 secret key 只
+透過 `${R2_ACCESS_KEY_ID}`／`${R2_SECRET_ACCESS_KEY}` interpolation 從未追蹤的
+`env/openab.env` 取得，不寫入 repo。
+
+正式文件流程是：OpenAB 收到 PDF／DOCX／XLSX／PPTX → 把 R2 presigned URL 與原始 filename
+注入 ACP prompt → agent 原樣執行 `parse-document <url> <filename>` → 取得 Markdown →
+根據 Markdown 回答。URL 有效 1 小時；使用者已明確同意它會隨 ACP prompt 傳給 company gateway。
+agent 只能使用 OpenAB 注入的 URL，不得使用使用者文字中的 URL、改寫 URL 或自行下載。Compose
+的 `PARSE_DOCUMENT_ALLOWED_HOST` 只作 host gate，不是 credential、簽章或 Slack 身分驗證。
+ZIP 只用同一個指令取得安全 metadata 檔名清單，不解壓或讀 member 內容；video 仍不支援。
+
+R2 bucket 必須在外部設定 `incoming/` prefix 的 1 天 lifecycle expiration；Slack app 讀取
+incoming attachment 需要 `files:read`，更新 scope 後必須 Reinstall to Workspace。preflight 不
+嘗試用 Cloudflare 或 Slack API 驗證這兩項，而是要求 interactive checklist；沒有 TTY 的 deploy
+安全中止。
 
 圖片**產出**是另一件事，走 `company-image`：一支裝在 image 內的受限 CLI，在同一個 container 完成，
 沒有獨立的 artifact broker。它只有 `generate` 與 `edit` 兩個 mode，只收 prompt、允許清單內的 size
@@ -193,6 +213,11 @@ Claude specialist 的 ACP adapter 是 image 內由 Docker pin 安裝的 `claude-
 `claude-credentials` named volume。首次需要時執行一次 `claude auth login`，之後由 OMO orchestrator
 委派。
 
+Slack routing 有一條 deterministic explicit trigger：使用者訊息若從開頭完全以
+`delegate claude-code:` 開始，OMO 必須去掉 prefix，把完整剩餘任務委派給 `@claude-code`；不能先用
+本地 agent 或靜默改走本地 agent。委派失敗時回報失敗。沒有這個 prefix 的一般訊息維持 OMO 自動
+routing。
+
 Claude ACP 沒有被刪掉，是保留的 rollback。切換只改
 [`../config/versions.env`](../config/versions.env) 的 `OPENAB_AGENT_RUNTIME`：
 
@@ -256,7 +281,8 @@ Claude ACP 沒有被刪掉，是保留的 rollback。切換只改
 - 不把 GitHub token、SSH key或 Docker socket放進 container。
 - 不使用 claude.ai 的 MCP connectors。它們跟著登入帳號同步進 container；這個 deployment 不掛入 connectors。
 - 不建獨立 broker 或 relay，也不追求 Slack token 隔離。
-- 不接受 PDF、Office 檔、video 或 ZIP，也不自建下載解析流程。
+- 不支援 video，也不解壓或解析 ZIP 內容；PDF、DOCX、XLSX、PPTX 只走 OpenAB 提供的 R2 URL
+  與固定的 `parse-document` 流程。
 - 不在部署層裁 `work-helper` 的 skill catalog。
 - 不讓 product-context bot clone、fetch、建立 branch/worktree、commit或 push。
 - 不讓 product-context bot執行 `slack-list ready` 或宣告驗收。
@@ -278,7 +304,8 @@ Claude ACP 沒有被刪掉，是保留的 rollback。切換只改
    `/etc/openab/config.toml` 的 agent 是 `opencode acp`。
 9. 把 `OPENAB_AGENT_RUNTIME` 改成 `claude` 後，同一支 `deploy.sh` 改為驗
    `claude-agent-acp` 存在且 config 指向它，Slack allowlist 不變。
-10. 圖片附件能進到模型；bot 對 PDF、ZIP 明確回覆不支援。
+10. 圖片附件能進到模型；PDF、DOCX、XLSX、PPTX 會經 `parse-document <url> <filename>` 轉成
+    Markdown 後回答；ZIP 只列檔，video 明確回覆不支援。
 11. 一般請求得到 PNG；明確要求 prototype 時才得到單一檔案的 HTML；兩者都由受限 uploader 回原 thread。
 12. `company-image generate` 在 container 內產出 PNG 到 `/home/node/drafts/<UTC 日期>/`；
     非法 size、走出 drafts 的檔名、允許範圍外的來源圖片都被拒絕且不發出 gateway 請求。

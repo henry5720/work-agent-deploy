@@ -41,6 +41,9 @@ users:read
 6. **Reinstall to Workspace**，取得新的 `xoxb-...`。
 7. 只把 app邀進 `C0BPZRN6H3R` 與 `C0B9PSESQ2U`。
 
+`files:read` 是讀取 Slack incoming attachment 的必要 scope；只新增 scope 不會更新既有
+token，必須 **Reinstall to Workspace**。
+
 Socket Mode用 WebSocket接收 events，所以不用填 Event Subscriptions的 Request URL，也不用設定
 Incoming Webhook。OpenAB使用 `xoxb-...` 透過 Slack Web API回覆訊息。
 
@@ -76,6 +79,7 @@ GITHUB_SSH_KEY="$HOME/.ssh/<你的 GitHub key>" ./scripts/update-snapshots.sh
 mkdir -p runtime/openab runtime/drafts
 
 ./tests/static.sh
+./tests/parse-document.py  # parser unit；不宣稱實際測到 multiprocessing worker terminate timeout
 ./scripts/preflight.sh
 ./scripts/compose.sh build --pull
 ./scripts/compose.sh up -d
@@ -114,19 +118,76 @@ Root `.env` 只給 Compose用（snapshot root與 uid）；`env/openab.env` 才�
 `.env`、`env/openab.env` 與 `runtime/` 都不進 Git。Claude login存在 named volume
 `claude-credentials`，重建 container後仍保留。
 
+### Cloudflare R2 filestore（nettop 手動前置）
+
+兩份 OpenAB runtime config 的 `[filestore]` 必須相同：bucket 是
+`work-agent-attachments`，endpoint 是
+`https://99de68928da234ebcf0c9370443ad7ee.r2.cloudflarestorage.com`，region 是 `auto`，
+prefix 是 `incoming/`，presigned URL TTL 是 3600 秒，單檔上限是 **50 MiB**。設定檔不含
+任何 R2 credential；請在 **nettop** 手動編輯未追蹤的 `env/openab.env`，加入：
+
+```text
+R2_ACCESS_KEY_ID=<Cloudflare R2 access key>
+R2_SECRET_ACCESS_KEY=<Cloudflare R2 secret key>
+```
+
+完成後確認檔案權限仍是 `600` 或 `640`。Cloudflare R2 bucket
+`work-agent-attachments` 還必須手動建立 lifecycle rule，讓 `incoming/` 物件 **1 天後
+過期**；這個外部設定不在 repo 內，也不會被 static test 或 API 驗證。
+
+Compose 會把 `PARSE_DOCUMENT_ALLOWED_HOST=99de68928da234ebcf0c9370443ad7ee.r2.cloudflarestorage.com`
+提供給 runtime，這只作 URL host gate。`preflight.sh` 會拒絕缺少／placeholder 的 R2 secrets、錯誤
+host，並在繼續前要求人工逐項確認 R2 lifecycle 與 Slack `files:read`；不會嘗試呼叫 Cloudflare
+或 Slack API。沒有 interactive TTY 的 `preflight.sh`／`deploy.sh` 會安全中止。
+
+#### 文件附件操作
+
+PDF、DOCX、XLSX、PPTX 是正式支援的文件附件。OpenAB 將 R2 `incoming/` presigned URL 與原始
+filename 注入 ACP prompt；URL 有效 1 小時、大小上限 50 MiB。agent 收到後自動以
+`parse-document <url> <filename>` 下載並轉成 Markdown，再以 Markdown 回答。這個 URL 是
+OpenAB 提供的唯一輸入，agent 不得使用使用者文字中的 URL、改寫 URL 或自行下載；URL 會隨 ACP
+prompt 傳給 company gateway，是已明確同意的 trust boundary。ZIP 只用同一個指令安全列出
+metadata，不解壓、不讀 member 內容；video 仍直接回覆不支援。
+
 在 Slack確認：
 
 1. DM詢問一個 repo問題。
 2. 在 `#你為什麼不問問神奇海螺ㄋ` @ bot建立一筆實際要保留的待辦，確認指派給sender並保存來源。
 3. 再次要求建立同名待辦，確認沒有新增第二列。
 4. 在待辦列的 item留言串 @ bot，確認它能找到正確的 `Rec...`。
-5. 傳一張截圖問問題，確認圖片有被讀到；再傳一個 PDF，確認 bot 明確回不支援。
+5. 傳一張截圖問問題，確認圖片有被讀到；再傳 PDF、DOCX、XLSX 或 PPTX，確認 bot 由附件
+   轉 Markdown 後回答；傳 ZIP 確認只列檔，傳 video 確認明確回覆不支援。
 6. 要一張圖，確認 bot 用 `company-image` 產出 PNG，再用 `slack-thread-artifact` 回同一個 thread；明確要求
    「可互動 prototype」時才上傳單一檔案 HTML。上傳成功後確認 drafts 原檔被刪；讓 Slack API 故意失敗一次，
    確認原檔保留給 cleanup。
    這一項也是 Slack upload body 編碼唯一的真實驗證：`files.getUploadURLExternal` 收到 JSON body 會回
-   `invalid_arguments`，檔案完全傳不出去。stderr 出現 `invalid_arguments` 就是編碼壞了，不是 token 或
-   scope 的問題（見 [`adr/0009`](adr/0009-thread-artifact-upload-and-optional-stt.md)）。
+    `invalid_arguments`，檔案完全傳不出去。stderr 出現 `invalid_arguments` 就是編碼壞了，不是 token 或
+    scope 的問題（見 [`adr/0009`](adr/0009-thread-artifact-upload-and-optional-stt.md)）。
+
+### Docling production runtime baseline
+
+`config/versions.env` 的 `DOCLING_VERSION=2.121.0` 是唯一版本正本；Compose 將它當 build arg
+傳給 Dockerfile。Docker build 會 exact-install 這個版本，執行
+`docling-tools models download --output-dir /opt/docling-models`，再把目錄設成唯讀並在
+build time 以 `node` 驗證可讀。Runtime 固定使用 `DOCLING_ARTIFACTS_PATH=/opt/docling-models`；
+`parse-document` 不會在 runtime 下載模型。這個 image 不額外安裝 OCR、VLM、video、ASR 或
+LibreOffice。
+
+在 **nettop** 完成 build 後，維護者必須逐字執行：
+
+```bash
+./scripts/compose.sh build --pull
+./scripts/compose.sh run --rm --user node --entrypoint parse-document backlog-agent --help
+./scripts/compose.sh run --rm --user node --entrypoint sh backlog-agent -lc \
+  'test "$DOCLING_ARTIFACTS_PATH" = /opt/docling-models &&
+   test -d "$DOCLING_ARTIFACTS_PATH" &&
+   test -r "$DOCLING_ARTIFACTS_PATH" && test -x "$DOCLING_ARTIFACTS_PATH" &&
+   python3 -c '\''from pathlib import Path; import os; p=Path("/opt/docling-models"); assert any(p.iterdir()); assert all(os.access(x, os.R_OK | (os.X_OK if x.is_dir() else 0)) for x in p.rglob("*"))'\'''
+```
+
+以上只證明 exact pin、prefetch directory、environment 與 `node` permissions；沒有宣稱
+offline PDF conversion。要驗證真實 conversion，仍須用 release gate 的真實 PDF attachment
+測試，並確認沒有 runtime download。
 
 停止 local instance：
 
@@ -285,6 +346,15 @@ Claude ACP 也保留完整 rollback，不需要改 code：
 
 之後由 OMO orchestrator 委派。Claude login state 保存在既有 `claude-credentials` named volume。
 
+Slack 明確委派 Claude Code 時，訊息必須從開頭使用固定 prefix：
+
+```text
+delegate claude-code: 請檢查這個問題並整理修正步驟
+```
+
+OMO 會去掉 prefix，把完整剩餘任務交給 `@claude-code`；不會先用本地 agent，也不會靜默改走本地
+agent。沒有這個 prefix 的一般訊息維持 OMO 自動 routing。
+
 Claude ACP 也保留 rollback，不需要改 code：
 
 ```bash
@@ -314,29 +384,32 @@ static test 會擋下來。
 ### 人工 release gate
 
 `tests/static.sh` 是靜態檢查，`scripts/deploy.sh` 只驗到「container 起得來、runtime 版本對、
-唯讀與可寫邊界成立」。**兩支都不會呼叫 Slack、公司 gateway 或 STT，也不會證明 crontab 真的觸發過。**
+唯讀與可寫邊界成立」；preflight 另外只做 R2 secret／host 檢查和人工 checklist。**不會呼叫
+Slack、Cloudflare、公司 gateway 或 STT，也不會證明 crontab 真的觸發過。**
 沒有 Docker 的機器上 `tests/static.sh` 連 Compose render 都是本機解析（它會印 LIMITED VERIFICATION）。
 
 所以下面這幾項是人工 gate，每次 release 都要重跑一遍，不能因為 `deploy.sh` 退出 0 就當它們過了：
 
 | # | 要驗什麼 | 怎麼驗 | 為什麼自動化驗不到 |
 |---|---|---|---|
+| 0 | R2 lifecycle 與 Slack `files:read` | preflight 的 interactive checklist；逐項確認 R2 `incoming/` 1 天 lifecycle、Slack scope 並已 reinstall | 這兩項是外部人工設定；不以 API 代驗 |
 | 1 | Slack 授權邊界 | 授權帳號 DM 有回應；未授權帳號沒有 | 需要真的 Slack workspace 與兩個身分 |
 | 2 | Artifact 回原 thread | 上面「Local 首次啟動」第 6 項，含刻意失敗一次確認留檔 | 需要真的 `SLACK_BOT_TOKEN` 與真的 thread |
 | 2a | Slack upload 的 body 編碼 | 同第 2 項，看檔案真的出現在 thread 而不是 `invalid_arguments` | 離線測試只比對 header 與 body 字串，不證明 Slack 收 |
 | 3 | 生圖 | 下面那兩行 `company-image generate`（會產生一次計費呼叫） | 離線測試只驗 request shape |
-| 4 | Artifact cleanup 排程 | `./scripts/cleanup-artifacts.sh` 手動跑一次，再確認 crontab entry 與 log 沒有 `FAILED` | 靜態測試只證明排程被寫進去，不證明 cron 觸發過 |
-| 5 | STT（`[stt].enabled = true` 時才要） | 用真實音檔打一次 `/audio/transcriptions` | 靜態檢查不發請求 |
-| 6 | 模型推論打得到 gateway | 下面那行 `opencode run --pure`，要回文字而不是 HTTP 405 | `tests/provider-route.py` 只推導 endpoint，不發請求 |
+| 4 | 文件附件流程 | 傳 PDF／DOCX／XLSX／PPTX，確認由 R2 URL 經 `parse-document <url> <filename>` 轉 Markdown；傳 ZIP 確認只列檔、傳 video 確認拒絕 | 需要真實 OpenAB attachment、R2 URL 與 Docling |
+| 5 | Artifact cleanup 排程 | `./scripts/cleanup-artifacts.sh` 手動跑一次，再確認 crontab entry 與 log 沒有 `FAILED` | 靜態測試只證明排程被寫進去，不證明 cron 觸發過 |
+| 6 | STT（`[stt].enabled = true` 時才要） | 用真實音檔打一次 `/audio/transcriptions` | 靜態檢查不發請求 |
+| 7 | 模型推論打得到 gateway | 下面那行 `opencode run --pure`，要回文字而不是 HTTP 405 | `tests/provider-route.py` 只推導 endpoint，不發請求 |
 
-第 4 項的兩個指令：
+第 5 項的兩個指令：
 
 ```bash
 crontab -l | grep work-agent-artifact-cleanup
 ./scripts/cleanup-artifacts.sh
 ```
 
-第 6 項。這是 `provider.company.npm` 曾經寫成 `@ai-sdk/openai-compatible` 時整台 bot 問不動的
+第 7 項。這是 `provider.company.npm` 曾經寫成 `@ai-sdk/openai-compatible` 時整台 bot 問不動的
 那個檢查（回 HTTP 405，理由見
 [ADR 0010](adr/0010-company-provider-uses-the-responses-api.md)）。改動 provider 設定、
 `COMPANY_GATEWAY_BASE_URL` 或 OpenCode 版本之後都要重跑：

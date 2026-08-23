@@ -89,14 +89,17 @@ fi
 
 compose ps
 
-# 這支跑完不等於這一版可以放給人用。上面每一條都是 container 內的存在性與權限檢查，
+# preflight.sh 在 build 前已完成 R2 secret/host 檢查，並以 interactive gate 確認 lifecycle
+# 與 Slack files:read；若沒有 TTY 或任一項未確認，deploy 在這裡就已中止。這支跑完仍不等於
+# 這一版可以放給人用。上面每一條都是 container 內的存在性與權限檢查，
 # 沒有一條打過 Claude、Slack、公司 gateway 或 STT，也沒有一條證明排程真的會觸發。
 # 那些只能由人在有 secret 的環境做一次，做完才算 release。
 cat <<'GATE'
 
 Deploy finished. What it just verified: the container starts, the pinned runtime,
 Claude ACP adapter and Claude Code CLI are the ones config/versions.env records, and
-the required writable volumes are available.
+the required writable volumes are available. Preflight also confirmed the R2 host
+and credentials are present and recorded the two manual prerequisite confirmations.
 
 NOT VERIFIED HERE — manual release gate, see the "人工 release gate" section of
 docs/runbook.md. Do not call this version released until every line is ticked off:
@@ -107,7 +110,7 @@ docs/runbook.md. Do not call this version released until every line is ticked of
   4. Artifact cleanup: `./scripts/cleanup-artifacts.sh` by hand, then confirm the
      crontab entry exists and its log has no FAILED line.
   5. STT, only if [stt].enabled is true: one real audio file through the endpoint.
-   6. Model inference against the real company gateway: one `opencode run --pure`
+  6. Model inference against the real company gateway: one `opencode run --pure`
       against company/gpt-5.6-terra returns text, not HTTP 405. Nothing offline can
       prove the gateway accepts the route this config resolves to.
 GATE

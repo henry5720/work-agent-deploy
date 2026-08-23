@@ -30,6 +30,9 @@ agent 手上並不改變它能做什麼。
   `config/openab.claude-acp.toml` 仍保留為完整 rollback，切換只改 `config/versions.env` 的
   `OPENAB_AGENT_RUNTIME`，image 與 config 會一起換。specialist 不使用 runtime `npx` download。
   兩份 config 的 `[slack]`、`[pool]`、`[reactions]` 必須逐字相同，由 `tests/static.sh` 比對。
+- Slack 使用者訊息若從開頭完全以 `delegate claude-code:` 開始，OMO 必須去掉 prefix，把完整剩餘
+  任務委派給 `@claude-code`；不能先用本地 agent，也不能靜默改走本地 agent。沒有 prefix 的一般
+  訊息維持 OMO 自動 routing。
 - 所有版本集中在 `config/versions.env`，包含兩個 OpenAB image 的 immutable digest、
   OpenCode、OMO、CodeGraph、Claude ACP adapter 與 Claude Code CLI 的數字版本。build 不得
   使用 `latest`、`beta`、`stable`。
@@ -40,8 +43,17 @@ agent 手上並不改變它能做什麼。
 - 不在部署層裁 catalog。skills 仍是 `work-helper/.claude/skills` 整個目錄的唯讀 mount，OMO 的
   agent 都保留 `skills: ["*"]` 與 `mcps: ["*"]`。行為限制寫在 `agents/CLAUDE.md`，不用
   mount-level 或 config-level 的 allowlist 表達。
-- Slack v1 的輸入限於 text、image、audio；輸出限於 PNG、Markdown，以及使用者明確要求時的
-  self-contained HTML。產物一律回原 Slack thread。
+- Slack v1 的 native 輸入是 text、image、audio；PDF、DOCX、XLSX、PPTX 由 OpenAB R2
+  attachment URL 經 `parse-document <url> <filename>` 轉 Markdown，ZIP 只安全列檔，video
+  不支援。輸出限於 PNG、Markdown，以及使用者明確要求時的 self-contained HTML。產物一律回
+  原 Slack thread。
+- 兩個 runtime config 共用完全相同的 R2 filestore：bucket `work-agent-attachments`、固定
+  endpoint、region `auto`、prefix `incoming/`、presigned URL TTL 3600 秒、上限 50 MiB，只有
+  `${R2_ACCESS_KEY_ID}`／`${R2_SECRET_ACCESS_KEY}` 可 interpolation。`PARSE_DOCUMENT_ALLOWED_HOST`
+  只作 URL host gate。使用者已明確同意 presigned URL 隨 ACP prompt 傳到 company gateway；agent
+  只能使用 OpenAB 注入的 URL。
+- R2 `incoming/` 1 天 lifecycle 與 Slack `files:read`／reinstall 是人工 deployment gate。
+  preflight 不呼叫外部 API 驗證，缺少 TTY 或未逐項確認就中止；deploy 必須先通過這個 gate。
 
 ## Consequences
 

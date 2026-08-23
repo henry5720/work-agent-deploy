@@ -32,10 +32,93 @@ test -x "$ROOT/tests/image-runtime.py"
 test -x "$ROOT/tests/slack-thread-artifact.py"
 test -x "$ROOT/tests/artifact-path-safety.py"
 test -x "$ROOT/tests/provider-route.py"
+test -f "$ROOT/tests/parse-document.py"
+test -x "$ROOT/agents/bin/parse-document"
 test ! -e "$ROOT/scripts/install-sync-timer.sh"
 python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$ROOT/managed-claude-settings.json"
 python3 -c 'import json,sys; v=json.load(open(sys.argv[1])); assert v["type"] == "home"; assert v["blocks"]' "$ROOT/config/slack-home.json"
 python3 -c 'import sys,tomllib; c=tomllib.load(open(sys.argv[1], "rb")); assert c["slack"]["allow_all_users"] is False; assert len(c["slack"]["allowed_users"]) == 17; assert c["pool"] == {"max_sessions": 10, "session_ttl_hours": 4}; assert "workspace" not in c; assert c["agent"]["working_dir"] == "/home/node/code"' "$ROOT/config/openab.toml"
+python3 - "$ROOT" <<'PY'
+import pathlib
+import sys
+import tomllib
+
+root = pathlib.Path(sys.argv[1])
+expected_filestore = {
+    "bucket": "work-agent-attachments",
+    "endpoint": "https://99de68928da234ebcf0c9370443ad7ee.r2.cloudflarestorage.com",
+    "region": "auto",
+    "prefix": "incoming/",
+    "presigned_ttl": 3600,
+    "max_file_size_mb": 50,
+    "access_key_id": "${R2_ACCESS_KEY_ID}",
+    "secret_access_key": "${R2_SECRET_ACCESS_KEY}",
+}
+configs = [tomllib.loads((root / name).read_text()) for name in (
+    "config/openab.toml", "config/openab.claude-acp.toml"
+)]
+for config in configs:
+    assert config["filestore"] == expected_filestore
+    assert set(config["filestore"]) == set(expected_filestore)
+assert configs[0]["filestore"] == configs[1]["filestore"], "R2 filestore differs between runtimes"
+PY
+
+python3 - "$ROOT" <<'PY'
+import pathlib
+import sys
+
+root = pathlib.Path(sys.argv[1])
+compose = (root / "compose.yaml").read_text()
+env_example = (root / "env/openab.env.example").read_text().splitlines()
+expected_host = "99de68928da234ebcf0c9370443ad7ee.r2.cloudflarestorage.com"
+runtime_environment = {
+    "PARSE_DOCUMENT_ALLOWED_HOST": expected_host,
+    "DOCLING_ARTIFACTS_PATH": "/opt/docling-models",
+}
+for key, value in runtime_environment.items():
+    assert f"{key}: {value}" in compose, f"compose.yaml does not provide {key}"
+    assert f"{key}:" in compose, f"compose.yaml environment source lost {key}"
+assert "R2_ACCESS_KEY_ID=" in env_example
+assert "R2_SECRET_ACCESS_KEY=" in env_example
+assert "R2_ACCESS_KEY_ID=replace-me" not in env_example
+assert "R2_SECRET_ACCESS_KEY=replace-me" not in env_example
+
+preflight = (root / "scripts/preflight.sh").read_text()
+for required in (
+    "R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY",
+    "PARSE_DOCUMENT_ALLOWED_HOST",
+    "placeholder",
+    "require_manual_release_gate",
+    "-t 0 && -t 1 && -r /dev/tty",
+    "files:read",
+    "lifecycle",
+    "refusing noninteractive deployment",
+):
+    assert required in preflight, f"preflight gate lost {required!r}"
+assert "curl" not in preflight and "slack api" not in preflight.lower()
+
+deploy = (root / "scripts/deploy.sh").read_text()
+assert '"$ROOT/scripts/preflight.sh"' in deploy
+assert deploy.index('"$ROOT/scripts/preflight.sh"') < deploy.index("compose build")
+assert "interactive gate" in deploy
+
+runtime_docs = (
+    "README.md",
+    "agents/CLAUDE.md",
+    "config/slack-home.json",
+    "docs/runbook.md",
+    "docs/system-design.md",
+    "docs/adr/0007-single-container-opencode-runtime.md",
+)
+old_refusal = ("PDF、Office", "PDF/DOCX", "尚未支援解析", "單檔上限 250 MB", "250 MB")
+for name in runtime_docs:
+    text = (root / name).read_text()
+    for phrase in old_refusal:
+        assert phrase not in text, f"old attachment refusal remains in {name}: {phrase}"
+    assert "parse-document <url> <filename>" in text or name == "config/slack-home.json"
+    assert "50 MiB" in text, f"{name} omits the 50 MiB attachment limit"
+    assert "company gateway" in text, f"{name} omits the presigned URL trust boundary"
+PY
 
 grep -q 'WORK_HELPER_ISSUE_MODE=manual' "$ROOT/env/openab.env.example"
 grep -q '^\.env$' "$ROOT/.gitignore"
@@ -53,7 +136,7 @@ grep -q 'CLAUDE_CONFIG_DIR: /home/node/.claude' "$ROOT/compose.yaml"
 grep -q './runtime/openab:/home/node/.openab:z' "$ROOT/compose.yaml"
 grep -q './runtime/drafts:/home/node/drafts:z' "$ROOT/compose.yaml"
 grep -q 'views.publish' "$ROOT/scripts/publish-slack-home.sh"
-grep -q 'apt-get install -y --no-install-recommends git python3' "$ROOT/Dockerfile"
+grep -q 'apt-get install -y --no-install-recommends curl git python3 python3-pip' "$ROOT/Dockerfile"
 grep -q 'ARG HOST_UID=1000' "$ROOT/Dockerfile"
 grep -Fq 'usermod -u "$HOST_UID"' "$ROOT/Dockerfile"
 grep -q 'HOST_UID: ${HOST_UID:-1000}' "$ROOT/compose.yaml"
@@ -63,7 +146,7 @@ grep -q 'slack-list --help' "$ROOT/scripts/deploy.sh"
 grep -q 'test -w /home/node/.openab' "$ROOT/scripts/deploy.sh"
 grep -Fq 'must be owned by $HOST_UID:$HOST_GID' "$ROOT/scripts/preflight.sh"
 grep -q 'slack-list add' "$ROOT/agents/CLAUDE.md"
-grep -q '建立指派給自己的待辦' "$ROOT/config/slack-home.json"
+grep -q '建立與整理待辦' "$ROOT/config/slack-home.json"
 grep -Fq '不要派工、不要接單。' "$ROOT/agents/CLAUDE.md"
 grep -Fq 'Claude Code ACP specialist' "$ROOT/agents/CLAUDE.md"
 grep -Fq 'claude-credentials' "$ROOT/agents/CLAUDE.md"
@@ -98,6 +181,7 @@ required = {
     "CODEGRAPH_VERSION",
     "CLAUDE_AGENT_ACP_VERSION",
     "CLAUDE_CODE_VERSION",
+    "DOCLING_VERSION",
 }
 missing = required - versions.keys()
 assert not missing, f"config/versions.env is missing {sorted(missing)}"
@@ -123,6 +207,8 @@ for key in ("OPENCODE_VERSION", "OMO_VERSION", "CODEGRAPH_VERSION", "CLAUDE_AGEN
         f"{key} must be an exact version, got {versions[key]!r}"
     )
 
+assert versions["DOCLING_VERSION"] == "2.121.0", versions["DOCLING_VERSION"]
+
 # The OMO pin lives in two places OpenCode actually reads. Keep them equal.
 opencode_json = (root / "config/opencode/opencode.json").read_text()
 assert f'"oh-my-opencode-slim@{versions["OMO_VERSION"]}"' in opencode_json, (
@@ -143,6 +229,21 @@ if grep -q -E ':latest|:beta"|:stable"|@latest' "$ROOT/Dockerfile" "$ROOT/compos
 fi
 grep -Fq 'ARG OPENAB_IMAGE' "$ROOT/Dockerfile"
 grep -Fq 'FROM ${OPENAB_IMAGE}' "$ROOT/Dockerfile"
+grep -Fq 'ARG DOCLING_VERSION' "$ROOT/Dockerfile"
+grep -Fq 'docling==${DOCLING_VERSION}' "$ROOT/Dockerfile"
+! grep -Fq 'docling==2.121.0' "$ROOT/Dockerfile"
+grep -Fq 'docling-tools models download --output-dir /opt/docling-models' "$ROOT/Dockerfile"
+grep -Fq 'DOCLING_ARTIFACTS_PATH=/opt/docling-models' "$ROOT/Dockerfile"
+grep -Fq 'DOCLING_VERSION: ${DOCLING_VERSION:?' "$ROOT/compose.yaml"
+grep -Fq 'DOCLING_ARTIFACTS_PATH: /opt/docling-models' "$ROOT/compose.yaml"
+grep -Fq 'USER node' "$ROOT/Dockerfile"
+grep -Fq 'parse-document --help' "$ROOT/Dockerfile"
+for forbidden in ocr vlm video asr libreoffice; do
+  if grep -Eiq "(^|[^[:alnum:]_])${forbidden}([^[:alnum:]_]|$)" "$ROOT/Dockerfile"; then
+    printf 'Dockerfile mentions forbidden Docling feature/package: %s\n' "$forbidden" >&2
+    exit 1
+  fi
+done
 grep -Fq 'npm i -g "@colbymchenry/codegraph@${CODEGRAPH_VERSION}"' "$ROOT/Dockerfile"
 grep -Fq 'npm i -g "oh-my-opencode-slim@${OMO_VERSION}"' "$ROOT/Dockerfile"
 grep -Fq 'npm i -g "@agentclientprotocol/claude-agent-acp@${CLAUDE_AGENT_ACP_VERSION}"' "$ROOT/Dockerfile"
@@ -175,6 +276,10 @@ for key in ("COMPANY_GATEWAY_API_KEY", "COMPANY_GATEWAY_BASE_URL", "SLACK_BOT_TO
     assert key in default["agent"]["inherit_env"], f"{key} is not inherited by the agent"
 for cfg in (default, rollback):
     assert "CLAUDE_CONFIG_DIR" in cfg["agent"]["inherit_env"]
+    for key in ("PARSE_DOCUMENT_ALLOWED_HOST", "DOCLING_ARTIFACTS_PATH"):
+        assert key in cfg["agent"]["inherit_env"], (
+            f"{key} is not inherited by {cfg['agent']['command']} after OpenAB env_clear"
+        )
 
 claude_bin = "/usr/local/bin/claude-agent-acp"
 assert rollback["agent"]["command"] == "claude-agent-acp", rollback["agent"]["command"]
@@ -190,6 +295,8 @@ for section in ("slack", "pool", "reactions"):
         "config/openab.claude-acp.toml"
     )
 assert default["stt"] == rollback["stt"], "[stt] differs between default and rollback"
+assert default["filestore"] == rollback["filestore"], "[filestore] differs between runtimes"
+assert default["filestore"]["max_file_size_mb"] == 50
 PY
 
 # lib.sh must map the runtime onto exactly these two images and configs.
@@ -369,6 +476,22 @@ claude_agent = omo["acpAgents"]["claude-code"]
 assert claude_agent["command"] == "/usr/local/bin/claude-agent-acp", claude_agent
 assert claude_agent["args"] == [], claude_agent
 assert "npx" not in json.dumps(claude_agent), claude_agent
+trigger = "delegate claude-code:"
+for field in ("description", "orchestratorPrompt"):
+    assert trigger in claude_agent[field], f"{field} omits the explicit Claude trigger"
+assert "starts exactly with" in claude_agent["orchestratorPrompt"]
+assert "delegate the complete remaining task to @claude-code immediately" in claude_agent["orchestratorPrompt"]
+assert "Do not answer with the local agent" in claude_agent["orchestratorPrompt"]
+assert "normal OMO automatic routing" in claude_agent["orchestratorPrompt"]
+for name in (
+    "agents/CLAUDE.md",
+    "README.md",
+    "docs/runbook.md",
+    "docs/system-design.md",
+    "docs/adr/0007-single-container-opencode-runtime.md",
+):
+    text = (root / name).read_text()
+    assert trigger in text, f"{name} omits the explicit Claude trigger"
 # The work-helper catalog is not trimmed here: no agent narrows skills or MCPs,
 # and no catalog-level disable list exists.
 for agent, cfg in preset.items():
@@ -1028,8 +1151,10 @@ PY
   done
 fi
 
+# Runbooks may name the manual deployment host when an operator must perform an
+# external step; implementation files must not hard-code a host or user name.
 if git -C "$ROOT" grep --untracked -n -E 'nettop|Nettop|(^|[^[:alnum:]_])henry([^[:alnum:]_]|$)|(^|[^[:alnum:]_])Henry([^[:alnum:]_]|$)' \
-  -- . ':(exclude)tests/static.sh' ':(exclude)config/repos.conf'; then
+  -- . ':(exclude)tests/static.sh' ':(exclude)config/repos.conf' ':(exclude)README.md' ':(exclude)docs/'; then
   printf 'A deployment host or user name is hard-coded in the repo.\n' >&2
   exit 1
 fi
@@ -1037,6 +1162,7 @@ fi
 # The CLIs' own contracts (request shape, PNG output, rejected input) and their
 # path handling under attack are covered by mocked tests. No socket, no Docker,
 # no gateway key, no Slack token.
+"$ROOT/tests/parse-document.py"
 "$ROOT/tests/image-runtime.py"
 "$ROOT/tests/slack-thread-artifact.py"
 "$ROOT/tests/artifact-path-safety.py"
