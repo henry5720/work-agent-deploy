@@ -82,7 +82,7 @@ if [[ ${#indexed[@]} -gt 0 ]]; then
     script+=" then codegraph sync /home/node/code/$name;"
     script+=" else codegraph init /home/node/code/$name; fi; "
   done
-  if SNAPSHOT_ROOT="$ROOT" docker compose -f "$REPO_DIR/compose.yaml" run --rm -T --no-deps \
+  if SNAPSHOT_ROOT="$ROOT" "$REPO_DIR/scripts/compose.sh" run --rm -T --no-deps \
       --entrypoint sh backlog-agent -c "$script"; then
     printf 'CodeGraph index updated for %d repos\n' "${#indexed[@]}"
   else

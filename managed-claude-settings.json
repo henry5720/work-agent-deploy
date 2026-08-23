@@ -1,6 +1,10 @@
 {
   "disableClaudeAiConnectors": true,
   "permissions": {
+    "allow": [
+      "Bash(company-image *)",
+      "Bash(slack-thread-artifact *)"
+    ],
     "deny": [
       "Read(//home/node/.claude/.credentials.json)",
       "Read(//home/node/.claude/.credentials*)",

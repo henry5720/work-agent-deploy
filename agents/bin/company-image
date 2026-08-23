@@ -1,0 +1,464 @@
+#!/usr/bin/env python3
+"""公司 gateway 生圖／改圖的唯一入口。
+
+這支 CLI 是刻意收窄的：
+
+- mode 只有 `generate` 與 `edit` 兩個固定值，沒有第三種。
+- 只接受 prompt、允許清單內的 size，以及 `edit` 的來源圖片路徑。
+- 沒有 endpoint、header、model、輸出路徑這類參數 —— 呼叫者無法把請求導到
+  別的地方，也無法把檔案寫到 drafts 以外。
+- gateway 位置與 key 只從 runtime env（`COMPANY_GATEWAY_BASE_URL`、
+  `COMPANY_GATEWAY_API_KEY`）讀，不寫在原始碼、不接受參數覆蓋。
+- 輸出一律是 PNG，一律落在 `/home/node/drafts/<UTC 日期>/`。
+
+兩個 agent runtime 共用這一支：image 由同一份 Dockerfile 建置，OpenCode 與
+Claude ACP rollback 都是用 bash 執行它，所以 rollback 不會少掉生圖路徑。
+
+請求走公司 gateway 的 Responses API `image_generation` tool：`generate` 只送
+prompt，`edit` 另外把來源圖片以 data URL 當成 `input_image` 一起送。
+
+檔案系統的走法刻意不用 resolve()：resolve 跟著 symlink 走，檢查過的字串和真正
+開到的檔案可以是兩回事。來源圖片固定從允許的那個 root 開一個 dirfd，再逐段
+`O_DIRECTORY|O_NOFOLLOW` 往下走。輸出也一樣：日期目錄以 dirfd 握住（gateway 呼叫
+期間它不可能被換成 symlink），檔名用 `O_CREAT|O_EXCL|O_NOFOLLOW` 佔住，內容先寫
+暫存檔再 fsync、rename 蓋回去。父目錄被替換的結果是失敗，不是寫到 drafts 以外。
+
+Exit code：0 成功、2 輸入不合法、3 環境或 gateway 失敗。
+"""
+
+from __future__ import annotations
+
+import argparse
+import base64
+import binascii
+import errno
+import json
+import os
+import re
+import stat
+import sys
+from datetime import datetime, timezone
+from pathlib import Path, PurePosixPath
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlparse
+from urllib.request import Request, urlopen
+
+# 這個值必須是 config/opencode/opencode.json 宣告過的模型；tests/static.sh 會比對。
+MODEL = "gpt-5.6-terra"
+
+ALLOWED_SIZES = ("1024x1024", "1024x1536", "1536x1024")
+DEFAULT_SIZE = "1024x1024"
+MAX_PROMPT_CHARS = 4000
+MAX_SOURCE_BYTES = 8 * 1024 * 1024
+REQUEST_TIMEOUT_SECONDS = 180
+
+PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
+JPEG_MAGIC = b"\xff\xd8\xff"
+
+# 唯一的輸出位置。drafts 是 container 內少數可寫的路徑之一。
+DRAFTS_ROOT = Path("/home/node/drafts")
+
+# `edit` 的來源只能在這幾個 agent 自己寫得到的位置。唯讀 snapshot 不在裡面：
+# repo 源碼沒有理由被送進 gateway。
+SOURCE_ROOTS = (Path("/home/node/drafts"), Path("/home/node/.openab"), Path("/tmp"))
+
+NAME_PATTERN = re.compile(r"[a-z0-9][a-z0-9-]{0,47}")
+LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
+
+MAX_NAME_COLLISIONS = 99
+
+EXIT_INVALID_INPUT = 2
+EXIT_RUNTIME = 3
+
+O_DIRECTORY = getattr(os, "O_DIRECTORY", 0)
+O_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
+
+
+class InputError(Exception):
+    """呼叫者給的東西不合法。"""
+
+
+class RuntimeFailure(Exception):
+    """環境或 gateway 的問題，不是呼叫者的錯。"""
+
+
+def gateway_endpoint() -> str:
+    """從 env 組出 Responses endpoint。沒有任何參數能覆蓋它。"""
+    base = os.environ.get("COMPANY_GATEWAY_BASE_URL", "").strip()
+    if not base:
+        raise RuntimeFailure("COMPANY_GATEWAY_BASE_URL is not set in the runtime env")
+    parsed = urlparse(base)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        raise RuntimeFailure(f"COMPANY_GATEWAY_BASE_URL is not an http(s) URL: {base}")
+    if parsed.scheme == "http" and parsed.hostname not in LOCAL_HOSTS:
+        raise RuntimeFailure(
+            "COMPANY_GATEWAY_BASE_URL must be https unless it points at localhost"
+        )
+    return base.rstrip("/") + "/responses"
+
+
+def gateway_key() -> str:
+    key = os.environ.get("COMPANY_GATEWAY_API_KEY", "").strip()
+    if not key or key == "replace-me":
+        raise RuntimeFailure("COMPANY_GATEWAY_API_KEY is not set in the runtime env")
+    return key
+
+
+def require_secure_flags() -> None:
+    """沒有 O_NOFOLLOW／O_DIRECTORY 就沒有安全走法，直接拒絕而不是降級。"""
+    if not O_NOFOLLOW or not O_DIRECTORY:
+        raise RuntimeFailure(
+            "this platform has no O_NOFOLLOW/O_DIRECTORY; refusing to touch drafts"
+        )
+
+
+def open_dir(path: Path) -> int:
+    """把一個固定 root 開成 dirfd。它自己是 symlink 也算失敗。"""
+    try:
+        return os.open(path, os.O_RDONLY | O_DIRECTORY | O_NOFOLLOW)
+    except OSError as exc:
+        raise RuntimeFailure(
+            f"cannot open {path} as a real directory: {os.strerror(exc.errno)}"
+        ) from exc
+
+
+def open_dir_at(dir_fd: int, name: str) -> int:
+    """開一層父目錄。O_NOFOLLOW 加 O_DIRECTORY 碰到 symlink 會回 ENOTDIR，不是 ELOOP。"""
+    try:
+        return os.open(name, os.O_RDONLY | O_DIRECTORY | O_NOFOLLOW, dir_fd=dir_fd)
+    except OSError as exc:
+        if exc.errno in (errno.ELOOP, errno.ENOTDIR):
+            raise InputError(
+                f"{name} is a symlink or not a directory; every directory above "
+                "--source must be real"
+            ) from exc
+        raise InputError(f"cannot open {name}/: {os.strerror(exc.errno)}") from exc
+
+
+def open_file_at(dir_fd: int, name: str) -> int:
+    try:
+        return os.open(name, os.O_RDONLY | O_NOFOLLOW, dir_fd=dir_fd)
+    except OSError as exc:
+        if exc.errno == errno.ELOOP:
+            raise InputError(f"{name} is a symlink; --source must be a real file") from exc
+        raise InputError(f"cannot open {name}: {os.strerror(exc.errno)}") from exc
+
+
+def relative_parts(raw: str, root: Path) -> tuple[str, ...] | None:
+    """`raw` 在 `root` 底下時回傳相對片段，否則 None。純字串運算，不碰檔案系統。"""
+    candidate = PurePosixPath(os.path.normpath(raw))
+    base = PurePosixPath(os.path.normpath(str(root)))
+    try:
+        relative = candidate.relative_to(base)
+    except ValueError:
+        return None
+    parts = relative.parts
+    if not parts or any(part in ("", ".", "..") for part in parts):
+        return None
+    return parts
+
+
+def read_source(raw: str) -> tuple[bytes, str]:
+    """讀 `edit` 的來源圖片，並確認它真的在允許的位置、真的是圖片。
+
+    比對是字面的，不是 resolve 後的：先看它落在哪個固定 root 底下，再從那個 root
+    的 dirfd 逐段 O_NOFOLLOW 開下去。任何一段是 symlink 就失敗，所以指到允許範圍
+    外的 symlink 不會被讀，父目錄在檢查後被換掉也不會。
+    """
+    require_secure_flags()
+    if not raw.startswith("/"):
+        raise InputError(f"--source must be an absolute path: {raw}")
+    for root in SOURCE_ROOTS:
+        parts = relative_parts(raw, root)
+        if parts is not None:
+            return read_under(root, parts, raw)
+    allowed = ", ".join(str(root) for root in SOURCE_ROOTS)
+    raise InputError(f"--source must live under one of: {allowed}")
+
+
+def read_under(root: Path, parts: tuple[str, ...], raw: str) -> tuple[bytes, str]:
+    fds: list[int] = []
+    try:
+        fds.append(open_dir(root))
+        for component in parts[:-1]:
+            fds.append(open_dir_at(fds[-1], component))
+        fds.append(open_file_at(fds[-1], parts[-1]))
+        info = os.fstat(fds[-1])
+        if not stat.S_ISREG(info.st_mode):
+            raise InputError(f"--source is not a regular file: {raw}")
+        if info.st_size == 0:
+            raise InputError(f"--source is empty: {raw}")
+        if info.st_size > MAX_SOURCE_BYTES:
+            raise InputError(
+                f"--source is larger than {MAX_SOURCE_BYTES} bytes: {info.st_size} bytes"
+            )
+        with os.fdopen(fds[-1], "rb", closefd=False) as opened:
+            data = opened.read(MAX_SOURCE_BYTES + 1)
+    finally:
+        for fd in reversed(fds):
+            os.close(fd)
+    if len(data) > MAX_SOURCE_BYTES:
+        raise InputError(f"--source grew past {MAX_SOURCE_BYTES} bytes while being read")
+    if data.startswith(PNG_MAGIC):
+        return data, "image/png"
+    if data.startswith(JPEG_MAGIC):
+        return data, "image/jpeg"
+    raise InputError(f"--source is not a PNG or JPEG file: {raw}")
+
+
+def check_prompt(prompt: str) -> str:
+    text = prompt.strip()
+    if not text:
+        raise InputError("--prompt is empty")
+    if len(text) > MAX_PROMPT_CHARS:
+        raise InputError(f"--prompt is longer than {MAX_PROMPT_CHARS} characters")
+    return text
+
+
+def check_name(name: str) -> str:
+    """name 只允許小寫、數字與 `-`，所以它永遠是單一路徑片段，走不出日期目錄。"""
+    if not NAME_PATTERN.fullmatch(name):
+        raise InputError(
+            "--name must match [a-z0-9][a-z0-9-]{0,47} (no slashes, no dots): " + name
+        )
+    return name
+
+
+def open_day_dir() -> tuple[int, str]:
+    """建立並開啟 drafts 內的 UTC 日期目錄，回傳 (dirfd, 目錄名)。
+
+    DRAFTS_ROOT 本身必須是真目錄（它是 bind mount），日期目錄也必須是 —— 被換成
+    symlink 時 O_NOFOLLOW 會失敗，而不是讓後面的寫入落到別的地方。呼叫者要一直
+    握著這個 fd，之後所有寫入都相對它，不再走一次 path。
+    """
+    require_secure_flags()
+    day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    root_fd = open_dir(DRAFTS_ROOT)
+    try:
+        try:
+            os.mkdir(day, 0o750, dir_fd=root_fd)
+        except FileExistsError:
+            pass
+        except OSError as exc:
+            raise RuntimeFailure(
+                f"cannot create {DRAFTS_ROOT / day}: {os.strerror(exc.errno)}"
+            ) from exc
+        try:
+            return os.open(day, os.O_RDONLY | O_DIRECTORY | O_NOFOLLOW, dir_fd=root_fd), day
+        except OSError as exc:
+            raise RuntimeFailure(
+                f"cannot open {DRAFTS_ROOT / day} as a real directory: "
+                f"{os.strerror(exc.errno)}"
+            ) from exc
+    finally:
+        os.close(root_fd)
+
+
+def reserve_name(day_fd: int, name: str) -> str:
+    """用 O_CREAT|O_EXCL|O_NOFOLLOW 佔住一個還沒被用的檔名。
+
+    既有的檔案或 symlink 都會讓 O_EXCL 失敗，所以這一步同時做到「不覆寫既有產物」
+    與「不寫穿事先種好的 symlink」，兩件事共用同一個 atomic 操作。
+    """
+    for counter in range(1, MAX_NAME_COLLISIONS + 1):
+        candidate = f"{name}.png" if counter == 1 else f"{name}-{counter}.png"
+        try:
+            os.close(
+                os.open(
+                    candidate,
+                    os.O_WRONLY | os.O_CREAT | os.O_EXCL | O_NOFOLLOW,
+                    0o640,
+                    dir_fd=day_fd,
+                )
+            )
+            return candidate
+        except FileExistsError:
+            continue
+        except OSError as exc:
+            raise RuntimeFailure(
+                f"cannot create {candidate}: {os.strerror(exc.errno)}"
+            ) from exc
+    raise RuntimeFailure(f"too many files named {name} in {DRAFTS_ROOT}")
+
+
+def store_png(day_fd: int, day: str, name: str, image: bytes) -> Path:
+    """把 PNG 原子性地寫進已鎖定的日期目錄，回傳完整路徑。
+
+    先佔住最終檔名，再寫同目錄的暫存檔、fsync、rename 蓋回自己佔的那個名字。
+    rename 不追 symlink，所以就算有人在這中間把最終檔名換成 symlink，被換掉的也
+    只是那個 symlink 本身。任何一步失敗都不留下半個檔案。
+    """
+    final = reserve_name(day_fd, name)
+    temp = f".{final}.{os.getpid()}.tmp"
+    try:
+        fd = os.open(
+            temp,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | O_NOFOLLOW,
+            0o640,
+            dir_fd=day_fd,
+        )
+    except OSError as exc:
+        discard(day_fd, final)
+        raise RuntimeFailure(f"cannot create {temp}: {os.strerror(exc.errno)}") from exc
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(image)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.rename(temp, final, src_dir_fd=day_fd, dst_dir_fd=day_fd)
+        os.fsync(day_fd)
+    except OSError as exc:
+        discard(day_fd, temp)
+        discard(day_fd, final)
+        raise RuntimeFailure(
+            f"cannot write {DRAFTS_ROOT / day / final}: {os.strerror(exc.errno)}"
+        ) from exc
+    return DRAFTS_ROOT / day / final
+
+
+def discard(day_fd: int, name: str) -> None:
+    """best-effort 清掉自己剛建的檔名，失敗不掩蓋原本的錯誤。"""
+    try:
+        os.unlink(name, dir_fd=day_fd)
+    except OSError:
+        pass
+
+
+def build_body(mode: str, prompt: str, size: str, source: tuple[bytes, str] | None) -> dict:
+    """Responses API 的請求 body。generate 與 edit 只差在有沒有 input_image。"""
+    content: list[dict] = [{"type": "input_text", "text": prompt}]
+    if mode == "edit":
+        if source is None:
+            raise InputError("edit needs --source")
+        data, mime = source
+        encoded = base64.b64encode(data).decode("ascii")
+        content.append(
+            {"type": "input_image", "image_url": f"data:{mime};base64,{encoded}"}
+        )
+    return {
+        "model": MODEL,
+        "input": [{"role": "user", "content": content}],
+        "tools": [{"type": "image_generation", "size": size, "output_format": "png"}],
+        "tool_choice": {"type": "image_generation"},
+        "store": False,
+    }
+
+
+def call_gateway(body: dict) -> dict:
+    endpoint = gateway_endpoint()
+    key = gateway_key()
+    request = Request(
+        endpoint,
+        data=json.dumps(body).encode("utf-8"),
+        # 固定兩個 header，沒有 --header 這種東西。
+        headers={
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
+            raw = response.read()
+    except HTTPError as exc:
+        detail = exc.read().decode("utf-8", "replace")[:500] if exc.fp else ""
+        raise RuntimeFailure(f"gateway returned HTTP {exc.code}: {detail}") from exc
+    except URLError as exc:
+        raise RuntimeFailure(f"cannot reach the gateway: {exc.reason}") from exc
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise RuntimeFailure(f"gateway response is not JSON: {exc}") from exc
+
+
+def extract_png(payload: dict) -> bytes:
+    """從 Responses 輸出裡取出 image_generation_call 的 base64 PNG。"""
+    outputs = payload.get("output")
+    if not isinstance(outputs, list):
+        raise RuntimeFailure("gateway response has no output array")
+    for item in outputs:
+        if not isinstance(item, dict) or item.get("type") != "image_generation_call":
+            continue
+        result = item.get("result")
+        if not result:
+            continue
+        try:
+            data = base64.b64decode(result, validate=True)
+        except (binascii.Error, ValueError) as exc:
+            raise RuntimeFailure(f"image_generation_call result is not base64: {exc}") from exc
+        if not data.startswith(PNG_MAGIC):
+            raise RuntimeFailure("gateway returned something that is not a PNG")
+        return data
+    raise RuntimeFailure("gateway response contains no image_generation_call result")
+
+
+def parse_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="company-image",
+        description=(
+            "透過公司 gateway 產生或編輯圖片，輸出 PNG 到 /home/node/drafts。"
+            " 這是這個環境唯一被允許的生圖路徑。"
+        ),
+    )
+    modes = parser.add_subparsers(dest="mode", required=True, metavar="{generate,edit}")
+
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("--prompt", required=True, help="要畫什麼；純文字")
+    common.add_argument(
+        "--size",
+        default=DEFAULT_SIZE,
+        choices=ALLOWED_SIZES,
+        help=f"輸出尺寸（預設 {DEFAULT_SIZE}）",
+    )
+    common.add_argument(
+        "--name",
+        required=True,
+        help="輸出檔名（不含副檔名），只能用 [a-z0-9-]",
+    )
+
+    modes.add_parser("generate", parents=[common], help="從 prompt 產生新圖")
+    edit = modes.add_parser("edit", parents=[common], help="以既有圖片為基礎修改")
+    edit.add_argument(
+        "--source",
+        required=True,
+        help="來源圖片的絕對路徑，必須在 drafts、.openab 或 /tmp 底下",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str]) -> int:
+    args = parse_args(argv)
+    try:
+        # 不合法的輸入不必付一次 gateway 呼叫的代價，所以先驗參數、讀來源、
+        # 組 body，最後才開日期目錄（drafts 壞掉也要在呼叫前就發現）。
+        prompt = check_prompt(args.prompt)
+        name = check_name(args.name)
+        source = read_source(args.source) if args.mode == "edit" else None
+        body = build_body(args.mode, prompt, args.size, source)
+        day_fd, day = open_day_dir()
+    except InputError as exc:
+        print(f"company-image: {exc}", file=sys.stderr)
+        return EXIT_INVALID_INPUT
+    except RuntimeFailure as exc:
+        print(f"company-image: {exc}", file=sys.stderr)
+        return EXIT_RUNTIME
+
+    # day_fd 跨過 gateway 呼叫一直握著，所以寫入時的目錄就是驗過的那一個。
+    try:
+        image = extract_png(call_gateway(body))
+        destination = store_png(day_fd, day, name, image)
+    except InputError as exc:
+        print(f"company-image: {exc}", file=sys.stderr)
+        return EXIT_INVALID_INPUT
+    except (RuntimeFailure, OSError) as exc:
+        print(f"company-image: {exc}", file=sys.stderr)
+        return EXIT_RUNTIME
+    finally:
+        os.close(day_fd)
+
+    print(destination)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

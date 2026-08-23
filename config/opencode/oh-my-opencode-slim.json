@@ -1,0 +1,49 @@
+{
+  "$schema": "https://unpkg.com/oh-my-opencode-slim@2.2.15/oh-my-opencode-slim.schema.json",
+  "autoUpdate": false,
+  "preset": "company",
+  "presets": {
+    "company": {
+      "orchestrator": {
+        "model": "company/gpt-5.6-terra",
+        "variant": "high",
+        "skills": ["*"],
+        "mcps": ["*"]
+      },
+      "oracle": {
+        "model": "company/gpt-5.6-terra",
+        "variant": "high",
+        "skills": ["*"],
+        "mcps": ["*"]
+      },
+      "explorer": {
+        "model": "company/gpt-5.6-luna",
+        "variant": "low",
+        "skills": ["*"],
+        "mcps": ["*"]
+      },
+      "librarian": {
+        "model": "company/gpt-5.6-luna",
+        "variant": "low",
+        "skills": ["*"],
+        "mcps": ["*"]
+      },
+      "designer": {
+        "model": "company/gpt-5.6-luna",
+        "variant": "medium",
+        "skills": ["*"],
+        "mcps": ["*"]
+      },
+      "fixer": {
+        "model": "company/gpt-5.6-luna",
+        "variant": "high",
+        "skills": ["*"],
+        "mcps": ["*"]
+      }
+    }
+  },
+  "image_routing": "direct",
+  "companion": { "enabled": false },
+  "multiplexer": { "type": "none" },
+  "interview": { "autoOpenBrowser": false }
+}

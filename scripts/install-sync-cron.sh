@@ -9,22 +9,23 @@ load_env "$ROOT"
 SNAPSHOT_ROOT=${SNAPSHOT_ROOT:-$HOME/work-agent-snapshots}
 STATE_DIR=${XDG_STATE_HOME:-$HOME/.local/state}/work-agent
 SCHEDULE=${SNAPSHOT_SCHEDULE:-0 * * * *}
-MARKER='# work-agent-snapshots'
+CLEANUP_SCHEDULE=${CLEANUP_SCHEDULE:-17 * * * *}
 
 # Create .index before any docker run, or Docker creates the bind source as root
 # and a host user without sudo can no longer write the CodeGraph index.
 mkdir -p "$SNAPSHOT_ROOT/.index" "$STATE_DIR" "$ROOT/runtime/openab" "$ROOT/runtime/drafts"
 chmod 0750 "$ROOT/runtime/openab" "$ROOT/runtime/drafts"
 
-# Rewrite our own line, leave every other crontab entry untouched.
+# Rewrite our own lines, leave every other crontab entry untouched. Both jobs are
+# installed together on purpose: a host that syncs snapshots but never runs the
+# artifact cleanup keeps failed uploads in drafts forever.
 {
-  crontab -l 2>/dev/null | grep -vF "$MARKER" || true
-  printf '%s SNAPSHOT_ROOT=%q %q %s\n' \
-    "$SCHEDULE" "$SNAPSHOT_ROOT" "$ROOT/scripts/update-snapshots.sh" "$MARKER"
+  crontab -l 2>/dev/null | grep -vF -e "$CRON_MARKER_SYNC" -e "$CRON_MARKER_CLEANUP" || true
+  render_crontab "$ROOT" "$SNAPSHOT_ROOT" "$SCHEDULE" "$CLEANUP_SCHEDULE"
 } | crontab -
 
-printf 'Installed crontab entry:\n'
-crontab -l | grep -F "$MARKER"
+printf 'Installed crontab entries:\n'
+crontab -l | grep -F -e "$CRON_MARKER_SYNC" -e "$CRON_MARKER_CLEANUP"
 
 printf '\nRunning the first sync (this clones every repo in config/repos.conf)...\n'
 SNAPSHOT_ROOT="$SNAPSHOT_ROOT" "$ROOT/scripts/update-snapshots.sh"

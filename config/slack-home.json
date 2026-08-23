@@ -65,7 +65,7 @@
       "elements": [
         {
           "type": "mrkdwn",
-          "text": "能力邊界：repo snapshot 唯讀；不修改 code、不建立 GitHub issue、不 push、不更動待辦狀態，也不通知 PM 驗收。Snapshot 代表最近一次同步成功的內容，不一定等於 GitHub 當下狀態。"
+          "text": "看得懂的附件只有文字、圖片、音訊；PDF、Office 檔、影片、ZIP 請改貼文字或截圖。回覆會是訊息本文、PNG 圖片或 Markdown 附件，明確要求可互動 prototype 時才給單一檔案的 HTML，產物都回同一個對話串。\n能力邊界：repo snapshot 唯讀；不修改 code、不建立 GitHub issue、不 push、不更動待辦狀態，也不通知 PM 驗收。Snapshot 代表最近一次同步成功的內容，不一定等於 GitHub 當下狀態。"
         }
       ]
     }

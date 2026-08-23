@@ -1,0 +1,55 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "autoupdate": false,
+  "share": "disabled",
+  "snapshot": false,
+  "plugin": ["oh-my-opencode-slim@2.2.15"],
+  "instructions": ["/home/node/CLAUDE.md"],
+  "skills": {
+    "paths": ["/home/node/.claude/skills"]
+  },
+  "permission": {
+    "edit": "deny",
+    "bash": {
+      "*": "allow",
+      "company-image *": "allow",
+      "slack-thread-artifact *": "allow",
+      "gh *": "deny",
+      "git clone*": "deny",
+      "git fetch*": "deny",
+      "git pull*": "deny",
+      "git push*": "deny",
+      "git commit*": "deny",
+      "git checkout*": "deny",
+      "git switch*": "deny",
+      "git worktree*": "deny",
+      "codegraph init*": "deny",
+      "codegraph index*": "deny",
+      "codegraph sync*": "deny",
+      "codegraph uninit*": "deny",
+      "codegraph daemon*": "deny"
+    }
+  },
+  "provider": {
+    "company": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Company Gateway",
+      "options": {
+        "baseURL": "{env:COMPANY_GATEWAY_BASE_URL}",
+        "apiKey": "{env:COMPANY_GATEWAY_API_KEY}"
+      },
+      "models": {
+        "gpt-5.6-terra": {
+          "name": "Terra (synthesis)",
+          "modalities": { "input": ["text", "image"], "output": ["text"] }
+        },
+        "gpt-5.6-luna": {
+          "name": "Luna (retrieval)",
+          "modalities": { "input": ["text", "image"], "output": ["text"] }
+        }
+      }
+    }
+  },
+  "model": "company/gpt-5.6-terra",
+  "small_model": "company/gpt-5.6-luna"
+}

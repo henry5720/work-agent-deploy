@@ -1,0 +1,301 @@
+#!/usr/bin/env python3
+"""把 drafts 內已存在的產物送回指定 Slack thread 的唯一入口。
+
+這是單一 container 的內部信任設計：channel 與 thread_ts 是 OpenAB 放進 prompt
+的 <sender_context> 後由 agent 明確帶入，不是 ACP side-channel，更不是不可竄改的
+身分驗證資料。此 CLI 只縮小可造成的副作用，不能把 prompt context 變成安全邊界。
+
+路徑處理不用 resolve()：resolve 會跟著 symlink 走，檢查完的那個字串和之後真正
+開到的檔案可以是兩回事。這裡固定從 DRAFTS_ROOT 開一個 dirfd，再逐段
+`O_DIRECTORY|O_NOFOLLOW` 往下走；讀取只從那個 fd，刪除只用同一個 parent fd 並
+先比對 inode。父目錄或檔案在檢查之後被換掉，結果是失敗，不是逃出 drafts。
+"""
+
+from __future__ import annotations
+
+import argparse
+import errno
+import json
+import os
+import re
+import stat
+import sys
+from pathlib import Path, PurePosixPath
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
+
+DRAFTS_ROOT = Path("/home/node/drafts")
+SLACK_API = "https://slack.com/api"
+ALLOWED_TYPES = {".png": "image/png", ".md": "text/markdown", ".html": "text/html"}
+CHANNEL_PATTERN = re.compile(r"^[CDG][A-Z0-9]{8,32}$")
+THREAD_TS_PATTERN = re.compile(r"^[0-9]{10,13}\.[0-9]{1,9}$")
+PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
+MAX_ARTIFACT_BYTES = 20 * 1024 * 1024
+TIMEOUT_SECONDS = 90
+EXIT_INVALID_INPUT = 2
+EXIT_RUNTIME = 3
+
+O_DIRECTORY = getattr(os, "O_DIRECTORY", 0)
+O_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
+
+
+class InputError(Exception):
+    pass
+
+
+class RuntimeFailure(Exception):
+    pass
+
+
+class DraftReplaced(Exception):
+    """上傳成功後，那個檔名已經不是當初讀的 inode。"""
+
+
+def slack_token() -> str:
+    token = os.environ.get("SLACK_BOT_TOKEN", "").strip()
+    if not token or token == ("xoxb-" + "replace-me"):
+        raise RuntimeFailure("SLACK_BOT_TOKEN is not set in the runtime env")
+    return token
+
+
+def require_secure_flags() -> None:
+    """沒有 O_NOFOLLOW／O_DIRECTORY 就沒有安全走法，直接拒絕而不是降級。"""
+    if not O_NOFOLLOW or not O_DIRECTORY:
+        raise RuntimeFailure(
+            "this platform has no O_NOFOLLOW/O_DIRECTORY; refusing to touch drafts"
+        )
+
+
+def draft_parts(raw: str) -> tuple[str, ...]:
+    """把 --file 拆成相對 DRAFTS_ROOT 的路徑片段。純字串運算，不碰檔案系統。
+
+    normpath 只做字面折疊，所以 `..` 走不出 root；真正的保證來自後面的 dirfd 走法。
+    """
+    if not raw.startswith("/"):
+        raise InputError(f"--file must be an absolute path under {DRAFTS_ROOT}")
+    candidate = PurePosixPath(os.path.normpath(raw))
+    root = PurePosixPath(os.path.normpath(str(DRAFTS_ROOT)))
+    try:
+        relative = candidate.relative_to(root)
+    except ValueError:
+        raise InputError(f"--file must live under {DRAFTS_ROOT}") from None
+    parts = relative.parts
+    if not parts or any(part in ("", ".", "..") for part in parts):
+        raise InputError(f"--file must name a file under {DRAFTS_ROOT}")
+    return parts
+
+
+def open_root() -> int:
+    try:
+        return os.open(DRAFTS_ROOT, os.O_RDONLY | O_DIRECTORY | O_NOFOLLOW)
+    except OSError as exc:
+        raise RuntimeFailure(
+            f"cannot open {DRAFTS_ROOT} as a real directory: {os.strerror(exc.errno)}"
+        ) from exc
+
+
+def open_dir_at(dir_fd: int, name: str) -> int:
+    """開一層父目錄。O_NOFOLLOW 加 O_DIRECTORY 碰到 symlink 會回 ENOTDIR，不是 ELOOP。"""
+    try:
+        return os.open(name, os.O_RDONLY | O_DIRECTORY | O_NOFOLLOW, dir_fd=dir_fd)
+    except OSError as exc:
+        if exc.errno in (errno.ELOOP, errno.ENOTDIR):
+            raise InputError(
+                f"{name} is a symlink or not a directory; every directory above "
+                "--file must be real"
+            ) from exc
+        raise InputError(f"cannot open {name}/: {os.strerror(exc.errno)}") from exc
+
+
+def open_file_at(dir_fd: int, name: str) -> int:
+    try:
+        return os.open(name, os.O_RDONLY | O_NOFOLLOW, dir_fd=dir_fd)
+    except OSError as exc:
+        if exc.errno == errno.ELOOP:
+            raise InputError(f"{name} is a symlink; --file must be a real file") from exc
+        raise InputError(f"cannot open {name}: {os.strerror(exc.errno)}") from exc
+
+
+def identity(info: os.stat_result) -> tuple:
+    """判斷「還是同一個檔案嗎」用的欄位。
+
+    只比 st_dev/st_ino 不夠：同一個目錄裡刪掉再建一個檔案，很容易拿到剛釋放的
+    inode number。加上 mode、size 與兩個時間戳，換掉的檔案就對不上了。
+    """
+    return (
+        info.st_dev,
+        info.st_ino,
+        info.st_mode,
+        info.st_size,
+        info.st_mtime_ns,
+        info.st_ctime_ns,
+    )
+
+
+class Draft:
+    """一份已被 dirfd 鎖定的草稿：資料在記憶體，刪除只走同一個 parent fd。"""
+
+    def __init__(self, parent_fd: int, name: str, data: bytes, mime: str, info: os.stat_result):
+        self.parent_fd = parent_fd
+        self.name = name
+        self.data = data
+        self.mime = mime
+        self.info = info
+
+    def unlink(self) -> None:
+        """刪掉當初讀的那個檔案，不是現在剛好叫這個名字的東西。"""
+        current = os.lstat(self.name, dir_fd=self.parent_fd)
+        if not stat.S_ISREG(current.st_mode) or identity(current) != identity(self.info):
+            raise DraftReplaced(
+                f"{self.name} was replaced after it was read; left in place for cleanup"
+            )
+        os.unlink(self.name, dir_fd=self.parent_fd)
+
+    def close(self) -> None:
+        os.close(self.parent_fd)
+
+    def __enter__(self) -> "Draft":
+        return self
+
+    def __exit__(self, *_exc) -> bool:
+        self.close()
+        return False
+
+
+def open_draft(raw: str) -> Draft:
+    """從 DRAFTS_ROOT 逐段走到 --file，讀進記憶體，並把 parent fd 留著給刪除用。"""
+    require_secure_flags()
+    parts = draft_parts(raw)
+    name = parts[-1]
+    mime = ALLOWED_TYPES.get(PurePosixPath(name).suffix.lower())
+    if mime is None:
+        raise InputError("--file must end in .png, .md, or .html")
+
+    ancestors: list[int] = []
+    parent_fd: int | None = None
+    fd: int | None = None
+    try:
+        ancestors.append(open_root())
+        for component in parts[:-1]:
+            ancestors.append(open_dir_at(ancestors[-1], component))
+        # 最後一段的 parent 要留著：上傳結束後只從它 unlink，不再走一次 path。
+        parent_fd = ancestors.pop()
+        fd = open_file_at(parent_fd, name)
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode):
+            raise InputError("--file must be a regular file")
+        if info.st_size == 0 or info.st_size > MAX_ARTIFACT_BYTES:
+            raise InputError(f"--file must be between 1 and {MAX_ARTIFACT_BYTES} bytes")
+        with os.fdopen(fd, "rb", closefd=False) as opened:
+            data = opened.read(MAX_ARTIFACT_BYTES + 1)
+        if len(data) != info.st_size:
+            raise InputError("--file changed size while it was being read")
+        if mime == "image/png" and not data.startswith(PNG_MAGIC):
+            raise InputError(".png artifact does not have PNG magic")
+    except BaseException:
+        if parent_fd is not None:
+            os.close(parent_fd)
+        raise
+    finally:
+        if fd is not None:
+            os.close(fd)
+        for extra in ancestors:
+            os.close(extra)
+    return Draft(parent_fd, name, data, mime, info)
+
+
+def validate_context(channel: str, thread_ts: str) -> tuple[str, str]:
+    if not CHANNEL_PATTERN.fullmatch(channel):
+        raise InputError("--channel must be a Slack C/D/G channel ID")
+    if not THREAD_TS_PATTERN.fullmatch(thread_ts):
+        raise InputError("--thread-ts must be a Slack message timestamp")
+    return channel, thread_ts
+
+
+def slack_json(method: str, payload: dict, token: str) -> dict:
+    request = Request(
+        f"{SLACK_API}/{method}",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=TIMEOUT_SECONDS) as response:
+            result = json.loads(response.read())
+    except (HTTPError, URLError, OSError, json.JSONDecodeError) as exc:
+        raise RuntimeFailure(f"Slack {method} request failed: {exc}") from exc
+    if not isinstance(result, dict) or result.get("ok") is not True:
+        raise RuntimeFailure(f"Slack {method} rejected the request: {result.get('error', 'invalid response') if isinstance(result, dict) else 'invalid response'}")
+    return result
+
+
+def upload(upload_url: str, data: bytes, mime: str) -> None:
+    # upload_url only comes from Slack's immediately preceding API response; it is
+    # deliberately not a CLI option and therefore cannot be selected by the agent.
+    if not isinstance(upload_url, str) or not upload_url.startswith("https://"):
+        raise RuntimeFailure("Slack returned an invalid upload URL")
+    request = Request(upload_url, data=data, headers={"Content-Type": mime}, method="POST")
+    try:
+        with urlopen(request, timeout=TIMEOUT_SECONDS) as response:
+            if not 200 <= response.status < 300:
+                raise RuntimeFailure(f"Slack upload returned HTTP {response.status}")
+    except (HTTPError, URLError, OSError) as exc:
+        raise RuntimeFailure(f"Slack upload failed: {exc}") from exc
+
+
+def parse_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(prog="slack-thread-artifact")
+    parser.add_argument("--file", required=True, help="drafts 內的絕對 PNG、Markdown 或 HTML 路徑")
+    parser.add_argument("--channel", required=True, help="<sender_context> 的 channel_id")
+    parser.add_argument("--thread-ts", required=True, help="<sender_context> 的 thread_ts")
+    return parser.parse_args(argv)
+
+
+def deliver(draft: Draft, channel: str, thread_ts: str, token: str) -> None:
+    ticket = slack_json(
+        "files.getUploadURLExternal", {"filename": draft.name, "length": len(draft.data)}, token
+    )
+    upload_url, file_id = ticket.get("upload_url"), ticket.get("file_id")
+    if not isinstance(file_id, str) or not file_id:
+        raise RuntimeFailure("Slack did not return file_id")
+    upload(upload_url, draft.data, draft.mime)
+    slack_json(
+        "files.completeUploadExternal",
+        {"files": [{"id": file_id, "title": draft.name}], "channel_id": channel, "thread_ts": thread_ts},
+        token,
+    )
+
+
+def main(argv: list[str]) -> int:
+    args = parse_args(argv)
+    try:
+        channel, thread_ts = validate_context(args.channel, args.thread_ts)
+        token = slack_token()
+        draft = open_draft(args.file)
+    except (InputError, RuntimeFailure) as exc:
+        print(f"slack-thread-artifact: {exc}", file=sys.stderr)
+        return EXIT_INVALID_INPUT if isinstance(exc, InputError) else EXIT_RUNTIME
+
+    with draft:
+        try:
+            deliver(draft, channel, thread_ts, token)
+        except (RuntimeFailure, OSError) as exc:
+            print(f"slack-thread-artifact: {exc}", file=sys.stderr)
+            return EXIT_RUNTIME
+        # 檔案已經送到對方手上，所以刪不掉不算交付失敗：說清楚並留給 24 小時
+        # cleanup，不要回非零讓 agent 以為要重傳。
+        try:
+            draft.unlink()
+        except DraftReplaced as exc:
+            print(f"slack-thread-artifact: {exc}", file=sys.stderr)
+        except OSError as exc:
+            print(
+                f"slack-thread-artifact: uploaded {draft.name} but could not delete it: {exc}",
+                file=sys.stderr,
+            )
+        print(f"uploaded {draft.name} to {channel}:{thread_ts}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
