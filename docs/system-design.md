@@ -137,6 +137,12 @@ build。理由與拒絕的替代方案見
 產圖後用 `slack-thread-artifact` 回原 thread。它固定執行 `files.getUploadURLExternal → upload →
 files.completeUploadExternal`，只讀 drafts 下的 regular PNG、Markdown、HTML，且成功才刪檔。
 
+兩個 Slack Web API 呼叫的 body 是 `application/x-www-form-urlencoded`，不是 JSON —— JSON body 會被
+`files.getUploadURLExternal` 回 `invalid_arguments`，bot 就一個檔案都傳不出去。`complete` 的 `files`
+在 form 裡是一個 JSON 字串欄位。中間上傳 bytes 的那一段不是 Web API：只用 Slack 回的 upload URL、
+artifact mime 與原始 bytes，不帶 token。細節見
+[`adr/0009`](adr/0009-thread-artifact-upload-and-optional-stt.md)。
+
 ### 「回原 thread」靠的是什麼
 
 **這是信任約定，不是安全保證。** 說清楚它由什麼組成：
@@ -282,6 +288,9 @@ Claude ACP 沒有被刪掉，是保留的 rollback。切換只改
      `COMPANY_GATEWAY_*` 仍傳得到 agent process。
 14. `slack-thread-artifact` 只接受 drafts 下的 regular PNG、Markdown、HTML；成功依序取得 upload URL、上傳、
     complete 到 `<sender_context>` 的 channel/thread 後刪檔。失敗不刪檔，且 Claude rollback 同樣可執行。
+    兩個 Slack Web API 呼叫送 form body（`complete` 的 `files` 是 JSON 字串欄位），bytes 那一段用
+    Slack 回的 URL 與 artifact mime 且不帶 token。`tests/slack-thread-artifact.py` 逐項比對三個請求的
+    header 與 body；真的 Slack 收不收要在有 token 的環境實傳一次。
 15. 未設定並啟用 STT 時 audio 被明確拒絕；設定獨立相容 endpoint 後才驗 `/audio/transcriptions` 真實轉錄。
 16. 兩支 CLI 都走不出固定 root：父目錄被換成 symlink、檔名本身是 symlink、路徑用 `..` 逃逸，
     都被拒絕且不發出任何 Slack 或 gateway 請求。`company-image` 的目標檔名被事先種成

@@ -634,6 +634,28 @@ assert 'files.completeUploadExternal' in src
 assert 'SLACK_BOT_TOKEN' in src
 assert '".png": "image/png"' in src and '".md": "text/markdown"' in src and '".html": "text/html"' in src
 
+# 兩個 Slack Web API method 的 body 必須是 form。JSON body 送給
+# files.getUploadURLExternal 會被 Slack 回 invalid_arguments，bot 就完全傳不了檔。
+# tests/slack-thread-artifact.py 驗實際 header 與 body；這裡擋的是「改回 JSON」。
+assert "urlencode(fields).encode(" in src, (
+    "slack-thread-artifact does not urlencode its Slack API body"
+)
+assert '"Content-Type": "application/x-www-form-urlencoded"' in src, (
+    "slack-thread-artifact is not sending a form content type to the Slack Web API"
+)
+assert '"Content-Type": "application/json"' not in src, (
+    "slack-thread-artifact sends a JSON body again; files.getUploadURLExternal "
+    "answers invalid_arguments to that"
+)
+# complete 的 files 是 form 裡的一個 JSON 字串欄位，不是 nested JSON body。
+assert '"files": json.dumps(' in src, (
+    "the files field of files.completeUploadExternal is not a JSON string"
+)
+# 真正上傳 bytes 的那一段不是 Slack Web API，不能被順手改成 form。
+assert 'headers={"Content-Type": mime}' in src, (
+    "the binary upload no longer posts the raw bytes under the artifact mime"
+)
+
 # The path walk is the security property, so assert its shape, not just that a
 # delete exists. resolve() must not come back: it follows symlinks, which is the
 # hole the dirfd walk closes. tests/artifact-path-safety.py proves the behaviour.

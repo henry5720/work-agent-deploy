@@ -65,7 +65,7 @@ Container 沒有 GitHub token、SSH key、Docker socket或可寫的 repo checkou
 - `agents/bin/company-image`：生圖／改圖的唯一入口，裝進 image 的受限 CLI，兩個 runtime 共用。
 - `agents/bin/slack-thread-artifact`：把 drafts 的 PNG／Markdown／HTML 用 bot token 回原 Slack thread 的受限 CLI，兩個 runtime 共用。
 - `tests/image-runtime.py`：用假 gateway 驗 `company-image` 的請求 shape、PNG 輸出與拒絕不合法輸入。
-- `tests/slack-thread-artifact.py`：用假 Slack 驗 upload 三段流程、成功刪檔、失敗保留與拒絕不合法輸入。
+- `tests/slack-thread-artifact.py`：用假 Slack 驗 upload 三段流程的 header 與 body 編碼（兩個 Web API 呼叫送 form、bytes 那段不帶 token）、成功刪檔、失敗保留與拒絕不合法輸入。
 - `config/slack-home.json`：授權使用者看到的 Slack Home功能首頁。
 - `config/repos.conf`：snapshot 清單的正本，新增 repo只改這裡。
 - `agents/CLAUDE.md`：遠端 bot 的行為邊界；兩個 runtime 共用同一份。

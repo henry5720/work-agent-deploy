@@ -123,6 +123,9 @@ Root `.env` 只給 Compose用（snapshot root與 uid）；`env/openab.env` 才�
 6. 要一張圖，確認 bot 用 `company-image` 產出 PNG，再用 `slack-thread-artifact` 回同一個 thread；明確要求
    「可互動 prototype」時才上傳單一檔案 HTML。上傳成功後確認 drafts 原檔被刪；讓 Slack API 故意失敗一次，
    確認原檔保留給 cleanup。
+   這一項也是 Slack upload body 編碼唯一的真實驗證：`files.getUploadURLExternal` 收到 JSON body 會回
+   `invalid_arguments`，檔案完全傳不出去。stderr 出現 `invalid_arguments` 就是編碼壞了，不是 token 或
+   scope 的問題（見 [`adr/0009`](adr/0009-thread-artifact-upload-and-optional-stt.md)）。
 
 停止 local instance：
 
@@ -314,6 +317,7 @@ Rollback 也能回傳檔案：同一份 Dockerfile 會裝 `slack-thread-artifact
 |---|---|---|---|
 | 1 | Slack 授權邊界 | 授權帳號 DM 有回應；未授權帳號沒有 | 需要真的 Slack workspace 與兩個身分 |
 | 2 | Artifact 回原 thread | 上面「Local 首次啟動」第 6 項，含刻意失敗一次確認留檔 | 需要真的 `SLACK_BOT_TOKEN` 與真的 thread |
+| 2a | Slack upload 的 body 編碼 | 同第 2 項，看檔案真的出現在 thread 而不是 `invalid_arguments` | 離線測試只比對 header 與 body 字串，不證明 Slack 收 |
 | 3 | 生圖 | 下面那兩行 `company-image generate`（會產生一次計費呼叫） | 離線測試只驗 request shape |
 | 4 | Artifact cleanup 排程 | `./scripts/cleanup-artifacts.sh` 手動跑一次，再確認 crontab entry 與 log 沒有 `FAILED` | 靜態測試只證明排程被寫進去，不證明 cron 觸發過 |
 | 5 | STT（`[stt].enabled = true` 時才要） | 用真實音檔打一次 `/audio/transcriptions` | 靜態檢查不發請求 |

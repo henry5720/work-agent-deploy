@@ -5,6 +5,11 @@
 的 <sender_context> 後由 agent 明確帶入，不是 ACP side-channel，更不是不可竄改的
 身分驗證資料。此 CLI 只縮小可造成的副作用，不能把 prompt context 變成安全邊界。
 
+兩個 Slack Web API method 的 body 都是 form，不是 JSON：`files.getUploadURLExternal`
+送 JSON body 會回 `invalid_arguments`。`files.completeUploadExternal` 的 `files` 在 form
+裡是一個 JSON 字串欄位。真正上傳 bytes 的那一段用 Slack 回傳的 upload URL、mime
+Content-Type 與原始 bytes，不帶 token。
+
 路徑處理不用 resolve()：resolve 會跟著 symlink 走，檢查完的那個字串和之後真正
 開到的檔案可以是兩回事。這裡固定從 DRAFTS_ROOT 開一個 dirfd，再逐段
 `O_DIRECTORY|O_NOFOLLOW` 往下走；讀取只從那個 fd，刪除只用同一個 parent fd 並
@@ -22,6 +27,7 @@ import stat
 import sys
 from pathlib import Path, PurePosixPath
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 DRAFTS_ROOT = Path("/home/node/drafts")
@@ -212,20 +218,39 @@ def validate_context(channel: str, thread_ts: str) -> tuple[str, str]:
     return channel, thread_ts
 
 
-def slack_json(method: str, payload: dict, token: str) -> dict:
+def slack_form(method: str, fields: dict[str, str], token: str) -> dict:
+    """打一個 Slack Web API method。body 一律是 form，不是 JSON。
+
+    `files.getUploadURLExternal` 只吃 `application/x-www-form-urlencoded`；送 JSON body
+    過去會回 `invalid_arguments`（實測公司 workspace 就是這樣壞的）。Slack Web API 的
+    共通表示法是 form，所以兩個 method 都走這一條，複雜參數（`files`）在 form 裡是
+    **一個 JSON 字串欄位**，不是 nested JSON body。
+
+    因此每個 value 都必須已經是 str。留這個檢查是為了讓「直接把 list／dict 丟進來」
+    這個 bug 當場失敗，而不是被 urlencode 靜靜轉成 Python repr 再被 Slack 拒絕。
+    """
+    for key, value in fields.items():
+        if not isinstance(value, str):
+            raise RuntimeFailure(f"Slack {method} field {key} must be encoded as a string")
     request = Request(
         f"{SLACK_API}/{method}",
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        data=urlencode(fields).encode("ascii"),
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/x-www-form-urlencoded",
+        },
         method="POST",
     )
     try:
         with urlopen(request, timeout=TIMEOUT_SECONDS) as response:
             result = json.loads(response.read())
     except (HTTPError, URLError, OSError, json.JSONDecodeError) as exc:
+        # 只放 method 與例外本身。request body 帶檔名、file_id 與 thread，header 帶
+        # token，兩者都不進 stderr。
         raise RuntimeFailure(f"Slack {method} request failed: {exc}") from exc
     if not isinstance(result, dict) or result.get("ok") is not True:
-        raise RuntimeFailure(f"Slack {method} rejected the request: {result.get('error', 'invalid response') if isinstance(result, dict) else 'invalid response'}")
+        reason = result.get("error", "invalid response") if isinstance(result, dict) else "invalid response"
+        raise RuntimeFailure(f"Slack {method} rejected the request: {reason}")
     return result
 
 
@@ -252,16 +277,23 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 
 def deliver(draft: Draft, channel: str, thread_ts: str, token: str) -> None:
-    ticket = slack_json(
-        "files.getUploadURLExternal", {"filename": draft.name, "length": len(draft.data)}, token
+    ticket = slack_form(
+        "files.getUploadURLExternal",
+        {"filename": draft.name, "length": str(len(draft.data))},
+        token,
     )
     upload_url, file_id = ticket.get("upload_url"), ticket.get("file_id")
     if not isinstance(file_id, str) or not file_id:
         raise RuntimeFailure("Slack did not return file_id")
     upload(upload_url, draft.data, draft.mime)
-    slack_json(
+    slack_form(
         "files.completeUploadExternal",
-        {"files": [{"id": file_id, "title": draft.name}], "channel_id": channel, "thread_ts": thread_ts},
+        {
+            # form 裡的 `files` 是一個 JSON 字串欄位，不是 nested JSON body。
+            "files": json.dumps([{"id": file_id, "title": draft.name}], separators=(",", ":")),
+            "channel_id": channel,
+            "thread_ts": thread_ts,
+        },
         token,
     )
 

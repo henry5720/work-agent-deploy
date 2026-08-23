@@ -7,6 +7,26 @@
 現有 `SLACK_BOT_TOKEN` 執行 `files.getUploadURLExternal`、upload、`files.completeUploadExternal`，並以
 agent 從 OpenAB `<sender_context>` 明確傳入的 `channel_id`、`thread_ts` 回原 thread。成功才刪檔；任一步失敗保留檔案給 host cleanup。
 
+## 兩個 Slack Web API 呼叫用 form body，不用 JSON
+
+原本兩個 method 都送 `Content-Type: application/json` 加 JSON body。實測公司 workspace 的
+`files.getUploadURLExternal` 對那個 body 回 `invalid_arguments`，所以 bot 一個檔案都傳不出去；
+同一個 PNG 換成 `application/x-www-form-urlencoded` 的 `filename=<name>&length=<bytes>` 就回
+`ok: true` 與 `upload_url`／`file_id`。form 是 Slack Web API 的共通表示法，JSON 只有一部分 method
+支援，因此兩個 method 都固定走 form。
+
+`files.completeUploadExternal` 的 `files` 是陣列，在 form 裡的表示法是**一個 JSON 字串欄位**
+（`files=[{"id":...,"title":...}]` 經 percent-encode），不是 nested JSON body。`channel_id` 與
+`thread_ts` 是普通字串欄位。
+
+中間真正上傳 bytes 的那一段**不是** Slack Web API：它只用 Slack 上一個回應給的 upload URL、
+artifact 的 mime 當 `Content-Type`、原始 bytes 當 body，而且不帶 bot token。改 Web API 的編碼時
+不要順手把它也改成 form。
+
+`slack_form()` 會拒絕非 `str` 的欄位值。這樣「直接把 list／dict 丟進來」會在本機當場失敗，不是
+被 urlencode 靜靜轉成 Python repr 再由 Slack 拒絕。header、body 與 file_id 都不進 stderr，錯誤訊息
+只有 method 名稱與 Slack 的 error code。
+
 ## 「回原 thread」是什麼等級的保證
 
 明確記下來，避免之後被讀成安全機制：
@@ -53,3 +73,6 @@ company gateway 當成必定提供 STT 的服務。
 - 真實 Slack upload 和真實 STT 仍需在有 runtime secret 的 container 做 smoke test；離線測試只驗
   request shape、路徑安全與失敗語意。這些列在 `docs/runbook.md` 的「人工 release gate」，
   `scripts/deploy.sh` 不會、也不聲稱會自動驗到。
+- `invalid_arguments` 那次是離線測試驗到「打對 endpoint」但沒驗 body 編碼漏掉的。
+  `tests/slack-thread-artifact.py` 現在逐項比對三個請求的 method、URL、header 與解回來的
+  body；`tests/static.sh` 另外擋「改回 JSON body」。兩者都仍然不證明 Slack 收不收。
