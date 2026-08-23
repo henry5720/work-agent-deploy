@@ -32,7 +32,7 @@
   },
   "provider": {
     "company": {
-      "npm": "@ai-sdk/openai-compatible",
+      "npm": "@ai-sdk/openai",
       "name": "Company Gateway",
       "options": {
         "baseURL": "{env:COMPANY_GATEWAY_BASE_URL}",

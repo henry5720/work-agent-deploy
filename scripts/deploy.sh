@@ -91,4 +91,7 @@ docs/runbook.md. Do not call this version released until every line is ticked of
   4. Artifact cleanup: `./scripts/cleanup-artifacts.sh` by hand, then confirm the
      crontab entry exists and its log has no FAILED line.
   5. STT, only if [stt].enabled is true: one real audio file through the endpoint.
+  6. Model inference against the real company gateway: one `opencode run --pure`
+     against company/gpt-5.6-terra returns text, not HTTP 405. Nothing offline can
+     prove the gateway accepts the route this config resolves to.
 GATE

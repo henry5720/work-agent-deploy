@@ -22,6 +22,7 @@ test -f "$ROOT/docs/adr/0004-schedule-snapshots-with-cron.md"
 test -f "$ROOT/docs/adr/0006-readonly-product-context-handoff-bot.md"
 test -f "$ROOT/docs/adr/0007-single-container-opencode-runtime.md"
 test -f "$ROOT/docs/adr/0008-restricted-company-image-cli.md"
+test -f "$ROOT/docs/adr/0010-company-provider-uses-the-responses-api.md"
 test ! -e "$ROOT/systemd"
 test -x "$ROOT/scripts/install-sync-cron.sh"
 test -x "$ROOT/scripts/compose.sh"
@@ -30,6 +31,7 @@ test -x "$ROOT/agents/bin/slack-thread-artifact"
 test -x "$ROOT/tests/image-runtime.py"
 test -x "$ROOT/tests/slack-thread-artifact.py"
 test -x "$ROOT/tests/artifact-path-safety.py"
+test -x "$ROOT/tests/provider-route.py"
 test ! -e "$ROOT/scripts/install-sync-timer.sh"
 python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$ROOT/managed-claude-settings.json"
 python3 -c 'import json,sys; v=json.load(open(sys.argv[1])); assert v["type"] == "home"; assert v["blocks"]' "$ROOT/config/slack-home.json"
@@ -295,6 +297,16 @@ for pattern in ("gh *", "git push*", "git commit*", "git checkout*", "codegraph 
 # snapshot, the agent contract from agents/CLAUDE.md.
 assert oc["skills"]["paths"] == ["/home/node/.claude/skills"], oc["skills"]
 assert oc["instructions"] == ["/home/node/CLAUDE.md"], oc["instructions"]
+
+# The company gateway only serves the Responses API (the same one
+# agents/bin/company-image posts to). OpenCode picks the SDK factory off this
+# `npm` field, and @ai-sdk/openai-compatible has no `responses` factory, so it
+# posts to {baseURL}/chat/completions and the gateway answers HTTP 405. That
+# shipped once. tests/provider-route.py derives the route; this pins the name.
+assert oc["provider"]["company"]["npm"] == "@ai-sdk/openai", (
+    "the company provider must use @ai-sdk/openai (Responses API); see "
+    "docs/adr/0010-company-provider-uses-the-responses-api.md"
+)
 
 # The gateway credentials are referenced, never inlined.
 opts = oc["provider"]["company"]["options"]
@@ -939,6 +951,9 @@ fi
 "$ROOT/tests/image-runtime.py"
 "$ROOT/tests/slack-thread-artifact.py"
 "$ROOT/tests/artifact-path-safety.py"
+# Which endpoint the company provider resolves to. Derived from the adapter
+# table, not from a real request: it cannot prove the gateway accepts anything.
+"$ROOT/tests/provider-route.py"
 
 printf 'Static checks passed.\n'
 printf 'These are static checks only: nothing here starts a container or calls the gateway.\n'

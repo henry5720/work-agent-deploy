@@ -51,6 +51,7 @@
 - Build不得出現 `latest`、`beta`、`stable` 或任何浮動 tag。所有 compose 指令走 `scripts/compose.sh`。
 - `config/versions.env` 是唯一正本，環境變數不能覆蓋它。ambient 值和檔案不一致時 `load_versions` 直接中止；要不改檔案試另一個 runtime 只有 `./scripts/compose.sh --runtime <opencode|claude>` 這一條路。
 - 生圖／改圖只走 `company-image`。不要加 endpoint、header、model、輸出路徑這類參數，也不要在文件裡教 agent 直接 `curl` gateway。理由見 `docs/adr/0008-restricted-company-image-cli.md`。
+- 公司 gateway 只提供 Responses API。`config/opencode/opencode.json` 的 `provider.company.npm` 必須是 `@ai-sdk/openai`；換成 `@ai-sdk/openai-compatible` 會讓 OpenCode 打到 `{baseURL}/chat/completions`，gateway 回 HTTP 405，bot 整台問不動。`COMPANY_GATEWAY_BASE_URL` 是那個 gateway 提供 `/responses` 的前綴（不是 `/v1`），provider 與 `company-image` 共用同一個值、接同一個後綴。`tests/provider-route.py` 會擋，理由見 `docs/adr/0010-company-provider-uses-the-responses-api.md`。
 - Claude ACP 是 rollback，不是可刪的死路徑。`config/openab.claude-acp.toml` 要跟著 `config/openab.toml` 一起維護。
 - Slack bot token 與公司 gateway key 共用同一個 container，這是已決定的取捨。不要在文件裡宣稱有 broker 或 token 隔離。
 - 「產物回原本那個 Slack thread」只能寫成單一 container 內 OpenAB `sender_context`、agent 與受限 CLI 之間的信任約定，**不是安全保證**。不要升級成 token isolation、cryptographic binding 或防 prompt injection 的說法，也不要改成 broker／relay。理由見 `docs/adr/0009-thread-artifact-upload-and-optional-stt.md`。
@@ -91,8 +92,10 @@ bash -n scripts/*.sh tests/*.sh
 
 涉及 runtime權限的改動，必須再跑 `docs/runbook.md` 的「驗證安全邊界」，不能只看 Compose render成功。
 
-`tests/static.sh` 會跑三支 mocked 測試（`tests/image-runtime.py`、`tests/slack-thread-artifact.py`、
-`tests/artifact-path-safety.py`），沒有一支呼叫 Slack 或公司 gateway。
+`tests/static.sh` 會跑四支 mocked 測試（`tests/image-runtime.py`、`tests/slack-thread-artifact.py`、
+`tests/artifact-path-safety.py`、`tests/provider-route.py`），沒有一支呼叫 Slack 或公司 gateway。
+`provider-route.py` 驗的是 provider 設定會被路到哪個 endpoint，靠的是抄下來的 adapter 對應表，
+不是真的請求 —— 它證明不了 gateway 收不收。
 
 跑得過**不代表**這一版可以放給人用。這些只有人工能驗，清單在 `docs/runbook.md`「人工 release gate」：
 

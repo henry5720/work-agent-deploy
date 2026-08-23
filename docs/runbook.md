@@ -316,6 +316,7 @@ Rollback 也能回傳檔案：同一份 Dockerfile 會裝 `slack-thread-artifact
 | 3 | 生圖 | 下面那兩行 `company-image generate`（會產生一次計費呼叫） | 離線測試只驗 request shape |
 | 4 | Artifact cleanup 排程 | `./scripts/cleanup-artifacts.sh` 手動跑一次，再確認 crontab entry 與 log 沒有 `FAILED` | 靜態測試只證明排程被寫進去，不證明 cron 觸發過 |
 | 5 | STT（`[stt].enabled = true` 時才要） | 用真實音檔打一次 `/audio/transcriptions` | 靜態檢查不發請求 |
+| 6 | 模型推論打得到 gateway | 下面那行 `opencode run --pure`，要回文字而不是 HTTP 405 | `tests/provider-route.py` 只推導 endpoint，不發請求 |
 
 第 4 項的兩個指令：
 
@@ -323,6 +324,20 @@ Rollback 也能回傳檔案：同一份 Dockerfile 會裝 `slack-thread-artifact
 crontab -l | grep work-agent-artifact-cleanup
 ./scripts/cleanup-artifacts.sh
 ```
+
+第 6 項。這是 `provider.company.npm` 曾經寫成 `@ai-sdk/openai-compatible` 時整台 bot 問不動的
+那個檢查（回 HTTP 405，理由見
+[ADR 0010](adr/0010-company-provider-uses-the-responses-api.md)）。改動 provider 設定、
+`COMPANY_GATEWAY_BASE_URL` 或 OpenCode 版本之後都要重跑：
+
+```bash
+./scripts/compose.sh exec backlog-agent \
+  opencode run --pure --model company/gpt-5.6-terra 'reply with the single word ok'
+```
+
+回文字就算過。回 HTTP 405 代表請求打到 `{baseURL}/chat/completions` 而 gateway 只收
+`/responses` —— 先看 `provider.company.npm` 是不是 `@ai-sdk/openai`，再看
+`COMPANY_GATEWAY_BASE_URL` 的前綴對不對。401／403 是 key 的問題，不是這條。
 
 `deploy.sh` 結束時會把這份清單再印一次，避免只看終端機輸出的人以為已經驗完。
 
