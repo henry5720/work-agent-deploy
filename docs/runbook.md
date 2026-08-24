@@ -304,12 +304,21 @@ crontab -l | grep work-agent-snapshots
 不合法輸入，**不會**證明公司 gateway 接受這個請求，也不會告訴你它這次回哪一種；gateway 沒實際
 回過圖之前不要說生圖已經可用。
 
-OpenCode runtime 另外驗這幾項（`deploy.sh` 也會跑同一組）：
+OpenCode runtime 另外驗這幾項（`deploy.sh` 會驗版本與主要 writable mounts；下面另外驗 OMO file URI 與 XDG routing）：
+
+OMO 必須由 image 內的 global package 載入，不可讓 OpenCode 看到 npm registry
+package spec；`file://` URI 才能在 `network=none` 時載入 OMO/ACP wrapper。OpenCode
+1.18.13 的 XDG state 也固定導向既有可寫的 `opencode-state` volume：
 
 ```bash
 ./scripts/compose.sh exec backlog-agent sh -lc \
   'opencode --version &&
    npm ls -g --depth=0 oh-my-opencode-slim &&
+   test -f /usr/local/lib/node_modules/oh-my-opencode-slim/package.json &&
+   test -n "$(node -p '\''require("/usr/local/lib/node_modules/oh-my-opencode-slim/package.json").main'\'')" &&
+   test -f /usr/local/lib/node_modules/oh-my-opencode-slim/"$(node -p '\''require("/usr/local/lib/node_modules/oh-my-opencode-slim/package.json").main'\'')" &&
+   grep -Fq "file:///usr/local/lib/node_modules/oh-my-opencode-slim" /home/node/.config/opencode/opencode.json &&
+   test "$XDG_STATE_HOME" = /home/node/.opencode &&
    test ! -w /home/node/.config/opencode/opencode.json &&
    test ! -w /home/node/.config/opencode/oh-my-opencode-slim.json &&
    test -w /home/node/.config/opencode &&
@@ -372,9 +381,10 @@ Slack 明確委派 Claude Code 時，訊息必須從開頭使用固定 prefix：
 !claude 請檢查這個問題並整理修正步驟
 ```
 
-`!claude` 是強制且可預期的 Claude ACP 入口。OMO 會去掉指令，立即把完整剩餘任務交給
-`@claude-code`；不會先用本地 agent，也不會靜默改走本地 agent。沒有 `!claude` 的一般訊息維持
-OMO normal routing。這是 OMO soft routing policy，不是 hard security gate：只有跨檔案或跨 repo 架構 review、
+`!claude` 是強制且可預期的 Claude ACP 入口。針對 Slack user text（不是 `<sender_context>`），OMO 會去掉
+prefix，立即透過 `@claude-code` ACP wrapper 把完整剩餘任務交給 Claude；不會先用本地 agent、本地工具，
+也不會由 orchestrator 直接呼叫 ACP 或 fallback。wrapper 失敗時要明確回報委派失敗。沒有 `!claude` 的
+一般訊息維持 OMO normal routing。這是 OMO soft routing policy，不是 hard security gate：只有跨檔案或跨 repo 架構 review、
 已嘗試兩次仍無法定位的 bug、使用者明確要求獨立第二意見，或涉及 permissions、secrets 或
 data loss 的高風險決策，才允許自動委派 Claude ACP。一般查詢、單檔修改、Slack list 操作不可自動委派。
 
@@ -516,8 +526,9 @@ host 端不要直接動 `runtime/drafts`。log 裡出現 `FAILED` 就是那一�
 
 1. 取得新的 OpenAB multi-arch digest。
 2. 更新 `OPENAB_VERSION`、`OPENAB_IMAGE_OPENCODE`、`OPENAB_IMAGE_CLAUDE`。
-3. 確認新 image 內的 opencode 版本，同步更新 `OPENCODE_VERSION` —— 對不上 build 會失敗，
-   這是刻意的。
+3. 確認 Dockerfile 自包的 `opencode-ai` exact version，同步更新 `OPENCODE_VERSION` ——
+   它會安裝到獨立的 `/opt/opencode-${OPENCODE_VERSION}` prefix，並在 build 時驗證
+   `/usr/local/bin/opencode` 的 resolved path 與 exact version；對不上會失敗，這是刻意的。
 4. 確認 Claude Code CLI 的 exact version，更新 `CLAUDE_CODE_VERSION`；Dockerfile 會固定安裝它。
 5. `./tests/static.sh && ./scripts/deploy.sh`。
 

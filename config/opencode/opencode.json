@@ -3,7 +3,7 @@
   "autoupdate": false,
   "share": "disabled",
   "snapshot": false,
-  "plugin": ["oh-my-opencode-slim@2.2.15"],
+  "plugin": ["file:///usr/local/lib/node_modules/oh-my-opencode-slim"],
   "instructions": ["/home/node/CLAUDE.md"],
   "skills": {
     "paths": ["/home/node/.claude/skills"]

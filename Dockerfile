@@ -45,15 +45,36 @@ ENV CLAUDE_AGENT_ACP_VERSION=${CLAUDE_AGENT_ACP_VERSION} \
     CLAUDE_CODE_VERSION=${CLAUDE_CODE_VERSION} \
     CLAUDE_CODE_EXECUTABLE=/usr/local/bin/claude
 
-# OpenCode 由 base image 安裝並固定版本，所以這裡只驗證它等於 versions.env 記的那一版：
-# digest 換了卻忘了更新 OPENCODE_VERSION 會直接 build 失敗，而不是安靜地跑到別的版本。
-# OMO 是 OpenCode plugin，用同一份 pin 裝成 global package，讓 runtime 不必上網抓 plugin。
-# Claude ACP specialist 直接使用 image 內固定版本的 adapter。
+# OpenCode 自包安裝在獨立 prefix，不依賴 OpenAB base image 內的版本。
+# /usr/local/bin/opencode 只保留指向這個 prefix 的 symlink；build 時同時驗證
+# symlink 的 resolved path 與 CLI 的 exact version，避免 base digest 或 package
+# drift 讓 runtime 靜默跑到另一版。OMO 是 OpenCode plugin，用同一份 pin 裝成
+# global package，讓 runtime 不必上網抓 plugin。Claude ACP specialist 直接使用
+# image 內固定版本的 adapter。
 RUN set -eu; \
-    if [ "$OPENAB_AGENT_RUNTIME" = "opencode" ]; then \
-      opencode --version | grep -qF "$OPENCODE_VERSION" \
-        || { echo "opencode in base image does not match OPENCODE_VERSION=$OPENCODE_VERSION" >&2; exit 1; }; \
+    OPENCODE_PREFIX="/opt/opencode-${OPENCODE_VERSION}"; \
+    npm install --prefix "/opt/opencode-${OPENCODE_VERSION}" "opencode-ai@${OPENCODE_VERSION}"; \
+    test -x "$OPENCODE_PREFIX/node_modules/.bin/opencode"; \
+    rm -f /usr/local/bin/opencode; \
+    ln -s "$OPENCODE_PREFIX/node_modules/.bin/opencode" /usr/local/bin/opencode; \
+    test "$(readlink /usr/local/bin/opencode)" = "$OPENCODE_PREFIX/node_modules/.bin/opencode"; \
+    resolved="$(readlink -f "$(command -v opencode)")"; \
+    test "$resolved" = "$(readlink -f "$OPENCODE_PREFIX/node_modules/.bin/opencode")"; \
+    case "$resolved" in \
+      "$OPENCODE_PREFIX"/node_modules/opencode-ai/*) ;; \
+      *) echo "opencode resolved outside $OPENCODE_PREFIX" >&2; exit 1 ;; \
+    esac; \
+    test "$(opencode --version)" = "$OPENCODE_VERSION"
+RUN if [ "$OPENAB_AGENT_RUNTIME" = "opencode" ]; then \
       npm i -g "oh-my-opencode-slim@${OMO_VERSION}"; \
+      OMO_DIR=/usr/local/lib/node_modules/oh-my-opencode-slim; \
+      test -f "$OMO_DIR/package.json"; \
+      test "$(node -p 'require(process.argv[1]).version' "$OMO_DIR/package.json")" = "$OMO_VERSION"; \
+      OMO_MAIN="$(node -p 'require(process.argv[1]).main || ""' "$OMO_DIR/package.json")"; \
+      test -n "$OMO_MAIN"; \
+      test -f "$OMO_DIR/$OMO_MAIN"; \
+      test -r "$OMO_DIR/$OMO_MAIN"; \
+      test "$(node -p 'require(process.argv[1]).main' "$OMO_DIR/package.json")" = "$OMO_MAIN"; \
     fi
 RUN test -x "$CLAUDE_AGENT_ACP_BIN" \
     && test "$(command -v claude-agent-acp)" = "$CLAUDE_AGENT_ACP_BIN" \

@@ -207,13 +207,18 @@ for key in ("OPENCODE_VERSION", "OMO_VERSION", "CODEGRAPH_VERSION", "CLAUDE_AGEN
         f"{key} must be an exact version, got {versions[key]!r}"
     )
 
+assert versions["OPENCODE_VERSION"] == "1.18.13", versions["OPENCODE_VERSION"]
 assert versions["DOCLING_VERSION"] == "2.121.0", versions["DOCLING_VERSION"]
 
-# The OMO pin lives in two places OpenCode actually reads. Keep them equal.
+# The OMO version is pinned in versions.env and installed into the image. OpenCode
+# must load that image-local package through a file URI; a registry package string
+# makes OpenCode attempt a runtime npm download in a network-isolated container.
 opencode_json = (root / "config/opencode/opencode.json").read_text()
-assert f'"oh-my-opencode-slim@{versions["OMO_VERSION"]}"' in opencode_json, (
-    "config/opencode/opencode.json does not pin oh-my-opencode-slim@"
-    + versions["OMO_VERSION"]
+assert '"file:///usr/local/lib/node_modules/oh-my-opencode-slim"' in opencode_json, (
+    "config/opencode/opencode.json does not use the image-local OMO file URI"
+)
+assert "oh-my-opencode-slim@" not in opencode_json, (
+    "config/opencode/opencode.json still asks OpenCode to download OMO from npm"
 )
 omo_json = (root / "config/opencode/oh-my-opencode-slim.json").read_text()
 assert f'oh-my-opencode-slim@{versions["OMO_VERSION"]}/' in omo_json, (
@@ -260,7 +265,48 @@ PY
 grep -Fq 'npm i -g "@colbymchenry/codegraph@${CODEGRAPH_VERSION}"' "$ROOT/Dockerfile"
 grep -Fq 'npm i -g "oh-my-opencode-slim@${OMO_VERSION}"' "$ROOT/Dockerfile"
 grep -Fq 'npm i -g "@agentclientprotocol/claude-agent-acp@${CLAUDE_AGENT_ACP_VERSION}"' "$ROOT/Dockerfile"
-grep -Fq 'grep -qF "$OPENCODE_VERSION"' "$ROOT/Dockerfile"
+python3 - "$ROOT" <<'PY'
+import pathlib
+import sys
+
+dockerfile = (pathlib.Path(sys.argv[1]) / "Dockerfile").read_text()
+
+# OpenCode is installed independently of whatever version the immutable OpenAB
+# base happens to contain. Keep these checks about the contract, not an
+# unrelated npm/apt command formatting detail.
+for required in (
+    'OPENCODE_PREFIX="/opt/opencode-${OPENCODE_VERSION}"',
+    'npm install --prefix "/opt/opencode-${OPENCODE_VERSION}" "opencode-ai@${OPENCODE_VERSION}"',
+    'test -x "$OPENCODE_PREFIX/node_modules/.bin/opencode"',
+    'rm -f /usr/local/bin/opencode',
+    'ln -s "$OPENCODE_PREFIX/node_modules/.bin/opencode" /usr/local/bin/opencode',
+    'test "$(readlink /usr/local/bin/opencode)" = "$OPENCODE_PREFIX/node_modules/.bin/opencode"',
+    'resolved="$(readlink -f "$(command -v opencode)")"',
+    'test "$resolved" = "$(readlink -f "$OPENCODE_PREFIX/node_modules/.bin/opencode")"',
+    '"$OPENCODE_PREFIX"/node_modules/opencode-ai/*)',
+    'test "$(opencode --version)" = "$OPENCODE_VERSION"',
+):
+    assert required in dockerfile, f"Dockerfile omits OpenCode pin/path check: {required}"
+
+assert 'npm install -g "opencode-ai@${OPENCODE_VERSION}"' not in dockerfile
+assert 'opencode --version | grep -qF "$OPENCODE_VERSION"' not in dockerfile
+
+# OMO is installed globally at build time, then checked from the exact path that
+# config/opencode/opencode.json loads at runtime. This proves the package is
+# image-local rather than merely proving that npm accepted the install command.
+for required in (
+    'npm i -g "oh-my-opencode-slim@${OMO_VERSION}"',
+    'OMO_DIR=/usr/local/lib/node_modules/oh-my-opencode-slim',
+    'test -f "$OMO_DIR/package.json"',
+    "require(process.argv[1]).version",
+    '"$OMO_DIR/package.json")" = "$OMO_VERSION"',
+    "require(process.argv[1]).main",
+    'test -n "$OMO_MAIN"',
+    'test -f "$OMO_DIR/$OMO_MAIN"',
+    'test -r "$OMO_DIR/$OMO_MAIN"',
+):
+    assert required in dockerfile, f"Dockerfile omits image-local OMO verification: {required}"
+PY
 grep -Fq 'command -v claude-agent-acp' "$ROOT/Dockerfile"
 grep -Fq 'CLAUDE_AGENT_ACP_BIN=/usr/local/bin/claude-agent-acp' "$ROOT/Dockerfile"
 grep -Fq 'test "$(command -v claude-agent-acp)" = "$CLAUDE_AGENT_ACP_BIN"' "$ROOT/Dockerfile"
@@ -435,6 +481,7 @@ oc = json.loads((root / "config/opencode/opencode.json").read_text())
 assert oc["autoupdate"] is False, "OpenCode must not self-update off a pinned image"
 assert oc["share"] == "disabled"
 assert oc["snapshot"] is False, "the project tree is read-only, snapshots would fail"
+assert oc["plugin"] == ["file:///usr/local/lib/node_modules/oh-my-opencode-slim"], oc["plugin"]
 assert oc["permission"]["edit"] == "deny", "the bot is read-only"
 bash = oc["permission"]["bash"]
 for pattern in ("gh *", "git push*", "git commit*", "git checkout*", "codegraph init*"):
@@ -491,27 +538,35 @@ assert claude_agent["args"] == [], claude_agent
 assert "npx" not in json.dumps(claude_agent), claude_agent
 trigger = "!claude"
 old_trigger = "delegate claude-" + "code:"
-policy_terms = (
+prompt = claude_agent["orchestratorPrompt"]
+for field in ("description", "orchestratorPrompt"):
+    assert trigger in claude_agent[field], f"{field} omits the explicit Claude trigger"
+    assert old_trigger not in claude_agent[field], f"{field} retains the old Claude trigger"
+for term in (
+    "Slack user text",
+    "not `<sender_context>`",
+    "strip only that prefix",
+    "immediately delegate",
+    "complete remaining request",
+    "@claude-code",
+    "ACP wrapper",
+    "must not invoke an ACP process directly",
+    "fall back to local handling",
+    "explicitly report the delegation failure",
+):
+    assert term in prompt, f"orchestratorPrompt omits routing invariant: {term}"
+for forbidden in ("subagent", "task", "acp_run"):
+    assert forbidden not in prompt, f"orchestratorPrompt names unavailable direct tool: {forbidden}"
+for term in (
     "normal OMO routing",
     "soft routing policy",
     "hard security gate",
-    "cross-file or cross-repo architecture review",
-    "independent second opinion",
     "permissions, secrets, or data loss",
     "ordinary queries",
     "single-file changes",
     "Slack list operations",
-)
-for field in ("description", "orchestratorPrompt"):
-    assert trigger in claude_agent[field], f"{field} omits the explicit Claude trigger"
-    assert old_trigger not in claude_agent[field], f"{field} retains the old Claude trigger"
-assert "starts exactly with" in claude_agent["orchestratorPrompt"]
-assert "strip that command and immediately call the OpenCode v2 `subagent` tool exactly once" in claude_agent["orchestratorPrompt"]
-assert '`agent: "claude-code"`' in claude_agent["orchestratorPrompt"]
-assert "call `task`, or call `acp_run` yourself" in claude_agent["orchestratorPrompt"]
-assert "Do not answer with the local agent" in claude_agent["orchestratorPrompt"]
-for term in policy_terms:
-    assert term in claude_agent["orchestratorPrompt"], f"orchestratorPrompt omits policy text: {term}"
+):
+    assert term in prompt, f"orchestratorPrompt omits policy invariant: {term}"
 for name in (
     "agents/CLAUDE.md",
     "README.md",
@@ -521,20 +576,12 @@ for name in (
     assert trigger in text, f"{name} omits the explicit Claude trigger"
     assert old_trigger not in text, f"{name} retains the old Claude trigger"
     assert "強制且可預期" in text, f"{name} omits the predictable mandatory entry-point policy"
-    assert "立即" in text, f"{name} omits immediate delegation wording"
-    for term in (
-        "OMO normal routing",
-        "OMO soft routing policy",
-        "hard security gate",
-        "跨檔案或跨 repo 架構 review",
-        "已嘗試兩次仍無法定位的 bug",
-        "明確要求獨立第二意見",
-        "permissions",
-        "secrets",
-        "data loss",
-        "一般查詢、單檔修改、Slack list 操作不可自動委派",
-    ):
-        assert term in text, f"{name} omits policy text: {term}"
+    assert "@claude-code" in text and "ACP wrapper" in text, (
+        f"{name} omits wrapper routing"
+    )
+    assert "<sender_context>" in text, f"{name} does not distinguish user text from sender context"
+    assert "委派失敗" in text, f"{name} omits explicit delegation failure handling"
+    assert "fallback" in text or "fallback" in text.lower(), f"{name} omits no-fallback policy"
 
 # These are active user-facing paths. Historical ADR text is checked separately
 # because its old trigger is intentionally retained as historical context.
@@ -549,17 +596,16 @@ for name in (
 system_design = (root / "docs/system-design.md").read_text()
 for term in (
     "強制且可預期",
-    "立即把完整任務委派",
+    "Slack user text（不是 `<sender_context>`）",
+    "立即透過 `@claude-code` ACP wrapper",
+    "orchestrator 不直接呼叫 ACP",
+    "不 fallback",
+    "wrapper 失敗時明確回報委派失敗",
     "OMO normal routing",
     "OMO soft routing",
     "hard security gate",
-    "跨檔案或跨 repo 架構 review",
-    "已嘗試兩次仍無法定位的 bug",
-    "明確要求獨立第二意見",
-    "permissions、secrets 或 data loss",
-    "一般查詢、單檔修改、Slack list 操作不可自動委派",
 ):
-    assert term in system_design, f"docs/system-design.md omits policy text: {term}"
+    assert term in system_design, f"docs/system-design.md omits routing invariant: {term}"
 
 adr = (root / "docs/adr/0007-single-container-opencode-runtime.md").read_text()
 assert "## Implementation update" in adr
@@ -582,6 +628,7 @@ grep -Fq 'opencode-data:/home/node/.local/share/opencode' "$ROOT/compose.yaml"
 grep -Fq 'opencode-cache:/home/node/.cache' "$ROOT/compose.yaml"
 grep -Fq 'opencode-state:/home/node/.opencode' "$ROOT/compose.yaml"
 grep -Fq 'OPENCODE_CONFIG_DIR: /home/node/.config/opencode' "$ROOT/compose.yaml"
+grep -Fq 'XDG_STATE_HOME: /home/node/.opencode' "$ROOT/compose.yaml"
 grep -Fq 'claude-credentials:/home/node/.claude' "$ROOT/compose.yaml"
 grep -Fq 'CLAUDE_CONFIG_DIR: /home/node/.claude' "$ROOT/compose.yaml"
 

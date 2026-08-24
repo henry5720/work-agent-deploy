@@ -49,8 +49,10 @@ Slack 若要明確交給 Claude Code，訊息必須從開頭使用：
 !claude 請檢查這個問題並整理修正步驟
 ```
 
-`!claude` 是強制且可預期的 Claude ACP 入口；OMO 去掉指令後立即把完整任務委派給 `@claude-code`。
-無 prefix 的一般訊息維持 OMO normal routing。這是 OMO soft routing policy，不是 hard security gate：
+`!claude` 是強制且可預期的 Claude ACP 入口；針對 Slack user text（不是 `<sender_context>`），OMO 去掉
+prefix 後立即透過 `@claude-code` ACP wrapper 把完整剩餘任務委派出去。orchestrator 不直接呼叫 ACP，
+也不 fallback 到本地處理；wrapper 失敗時要明確回報委派失敗。無 prefix 的一般訊息維持 OMO normal routing。
+這是 OMO soft routing policy，不是 hard security gate：
 只有跨檔案或跨 repo 架構 review、已嘗試兩次仍無法定位的 bug、使用者明確要求獨立第二意見，或涉及
  permissions／secrets／data loss 的高風險決策，才允許自動委派 Claude ACP。一般查詢、單檔修改、Slack list 操作不可自動委派。
 

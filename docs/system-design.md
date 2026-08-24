@@ -213,8 +213,9 @@ Claude specialist 的 ACP adapter 是 image 內由 Docker pin 安裝的 `claude-
 `claude-credentials` named volume。首次需要時執行一次 `claude auth login`，之後由 OMO orchestrator
 委派。
 
-Slack routing 的 deterministic explicit trigger 是 `!claude`：這是強制且可預期的 Claude ACP 入口，
-OMO 去掉指令後立即把完整任務委派給 `@claude-code`。無 prefix 的訊息維持 OMO normal routing；只有
+Slack routing 的 deterministic explicit trigger 是 `!claude`：這是強制且可預期的 Claude ACP 入口。針對
+Slack user text（不是 `<sender_context>`），OMO 去掉 prefix 後立即透過 `@claude-code` ACP wrapper 把完整
+剩餘任務委派出去；orchestrator 不直接呼叫 ACP，也不 fallback。wrapper 失敗時明確回報委派失敗。無 prefix 的訊息維持 OMO normal routing；只有
 跨檔案或跨 repo 架構 review、已嘗試兩次仍無法定位的 bug、使用者明確要求獨立第二意見，或涉及
 permissions、secrets 或 data loss 的高風險決策，才允許自動委派 Claude ACP。這是 OMO soft routing
 policy，不是 hard security gate；一般查詢、單檔修改、Slack list 操作不可自動委派。

@@ -31,6 +31,9 @@ services:
       CLAUDE_CODE_VERSION: ${CLAUDE_CODE_VERSION:?run ./scripts/compose.sh, not docker compose}
       CLAUDE_CODE_EXECUTABLE: /usr/local/bin/claude
       OPENCODE_CONFIG_DIR: /home/node/.config/opencode
+      # OpenCode 1.18.13 writes XDG state under ~/.local/state by default; route
+      # it to the existing writable opencode-state volume instead of read-only home.
+      XDG_STATE_HOME: /home/node/.opencode
       CODEGRAPH_TELEMETRY: "0"
       DOCLING_ARTIFACTS_PATH: /opt/docling-models
       # parse-document only accepts attachment URLs from this R2 host. This
