@@ -46,10 +46,13 @@ specialist 的 `acpAgents.claude-code` 執行固定版 `/usr/local/bin/claude-ag
 Slack 若要明確交給 Claude Code，訊息必須從開頭使用：
 
 ```text
-delegate claude-code: 請檢查這個問題並整理修正步驟
+!claude 請檢查這個問題並整理修正步驟
 ```
 
-OMO 會把 prefix 後的完整任務委派給 `@claude-code`；無此 prefix 的一般訊息維持 OMO 自動 routing。
+`!claude` 是強制且可預期的 Claude ACP 入口；OMO 去掉指令後立即把完整任務委派給 `@claude-code`。
+無 prefix 的一般訊息維持 OMO normal routing。這是 OMO soft routing policy，不是 hard security gate：
+只有跨檔案或跨 repo 架構 review、已嘗試兩次仍無法定位的 bug、使用者明確要求獨立第二意見，或涉及
+ permissions／secrets／data loss 的高風險決策，才允許自動委派 Claude ACP。一般查詢、單檔修改、Slack list 操作不可自動委派。
 
 所有 compose 指令走 `./scripts/compose.sh`；直接 `docker compose` 會中止，因為版本只有
 `config/versions.env` 一份正本。

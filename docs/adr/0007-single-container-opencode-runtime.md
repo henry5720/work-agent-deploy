@@ -55,6 +55,12 @@ agent 手上並不改變它能做什麼。
 - R2 `incoming/` 1 天 lifecycle 與 Slack `files:read`／reinstall 是人工 deployment gate。
   preflight 不呼叫外部 API 驗證，缺少 TTY 或未逐項確認就中止；deploy 必須先通過這個 gate。
 
+## Implementation update
+
+目前 Slack 強制入口已改為 `!claude <任務>`；現況以
+[`config/opencode/oh-my-opencode-slim.json`](../../config/opencode/oh-my-opencode-slim.json) 為準。
+上方 Decision 的 trigger 是本 ADR 的歷史紀錄，不代表目前入口。
+
 ## Consequences
 
 - 只有一個 container 要建、要驗、要排障，OpenCode + OMO 能不能用可以單獨判斷。

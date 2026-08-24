@@ -489,22 +489,81 @@ claude_agent = omo["acpAgents"]["claude-code"]
 assert claude_agent["command"] == "/usr/local/bin/claude-agent-acp", claude_agent
 assert claude_agent["args"] == [], claude_agent
 assert "npx" not in json.dumps(claude_agent), claude_agent
-trigger = "delegate claude-code:"
+trigger = "!claude"
+old_trigger = "delegate claude-" + "code:"
+policy_terms = (
+    "normal OMO routing",
+    "soft routing policy",
+    "hard security gate",
+    "cross-file or cross-repo architecture review",
+    "independent second opinion",
+    "permissions, secrets, or data loss",
+    "ordinary queries",
+    "single-file changes",
+    "Slack list operations",
+)
 for field in ("description", "orchestratorPrompt"):
     assert trigger in claude_agent[field], f"{field} omits the explicit Claude trigger"
+    assert old_trigger not in claude_agent[field], f"{field} retains the old Claude trigger"
 assert "starts exactly with" in claude_agent["orchestratorPrompt"]
-assert "delegate the complete remaining task to @claude-code immediately" in claude_agent["orchestratorPrompt"]
+assert "strip that command and immediately delegate" in claude_agent["orchestratorPrompt"]
 assert "Do not answer with the local agent" in claude_agent["orchestratorPrompt"]
-assert "normal OMO automatic routing" in claude_agent["orchestratorPrompt"]
+for term in policy_terms:
+    assert term in claude_agent["orchestratorPrompt"], f"orchestratorPrompt omits policy text: {term}"
 for name in (
     "agents/CLAUDE.md",
     "README.md",
     "docs/runbook.md",
-    "docs/system-design.md",
-    "docs/adr/0007-single-container-opencode-runtime.md",
 ):
     text = (root / name).read_text()
     assert trigger in text, f"{name} omits the explicit Claude trigger"
+    assert old_trigger not in text, f"{name} retains the old Claude trigger"
+    assert "強制且可預期" in text, f"{name} omits the predictable mandatory entry-point policy"
+    assert "立即" in text, f"{name} omits immediate delegation wording"
+    for term in (
+        "OMO normal routing",
+        "OMO soft routing policy",
+        "hard security gate",
+        "跨檔案或跨 repo 架構 review",
+        "已嘗試兩次仍無法定位的 bug",
+        "明確要求獨立第二意見",
+        "permissions",
+        "secrets",
+        "data loss",
+        "一般查詢、單檔修改、Slack list 操作不可自動委派",
+    ):
+        assert term in text, f"{name} omits policy text: {term}"
+
+# These are active user-facing paths. Historical ADR text is checked separately
+# because its old trigger is intentionally retained as historical context.
+for name in (
+    "config/slack-home.json",
+    "docs/system-design.md",
+):
+    text = (root / name).read_text()
+    assert trigger in text, f"{name} omits the current Claude trigger"
+    assert old_trigger not in text, f"{name} retains the old Claude trigger"
+
+system_design = (root / "docs/system-design.md").read_text()
+for term in (
+    "強制且可預期",
+    "立即把完整任務委派",
+    "OMO normal routing",
+    "OMO soft routing",
+    "hard security gate",
+    "跨檔案或跨 repo 架構 review",
+    "已嘗試兩次仍無法定位的 bug",
+    "明確要求獨立第二意見",
+    "permissions、secrets 或 data loss",
+    "一般查詢、單檔修改、Slack list 操作不可自動委派",
+):
+    assert term in system_design, f"docs/system-design.md omits policy text: {term}"
+
+adr = (root / "docs/adr/0007-single-container-opencode-runtime.md").read_text()
+assert "## Implementation update" in adr
+assert "目前 Slack 強制入口已改為 `!claude <任務>`" in adr
+assert "../../config/opencode/oh-my-opencode-slim.json" in adr
+assert "歷史紀錄" in adr
 # The work-helper catalog is not trimmed here: no agent narrows skills or MCPs,
 # and no catalog-level disable list exists.
 for agent, cfg in preset.items():

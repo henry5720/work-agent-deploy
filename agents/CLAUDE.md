@@ -10,11 +10,15 @@ OpenCode OMO 可委派同一個 container 內的 Claude Code ACP specialist。�
 
 ## 明確委派 Claude Code
 
-- Slack 使用者訊息若從開頭**完全以** `delegate claude-code:` 開始，這是明確委派命令；OMO 必須把
-  prefix 後的完整剩餘內容交給 `@claude-code`，不能先用本地 agent 或本地工具處理，也不能靜默改走
-  本地 agent。
+- Slack 使用者訊息若從開頭**完全以** `!claude` 開始，這是強制且可預期的入口；去掉這個指令後，
+  OMO 必須立即把完整剩餘內容交給 Claude ACP 的 `@claude-code`，不能先用本地 agent 或本地工具
+  處理，也不能靜默改走本地 agent。
 - 若委派無法執行，回報委派失敗，不要把任務改成本地處理。
-- 沒有這個 prefix 的一般訊息，保留 OMO 自動 routing。
+- 沒有 `!claude` 的一般訊息，保留 OMO normal routing。這是 OMO soft routing policy，不是 hard security gate。
+- 無 prefix 的訊息只有符合下列任一條件時，才允許自動委派 Claude ACP：跨檔案或跨 repo 架構 review；
+  已嘗試兩次仍無法定位的 bug；使用者明確要求獨立第二意見；涉及 permissions、secrets 或 data loss
+  的高風險決策。
+- 一般查詢、單檔修改、Slack list 操作不可自動委派。
 
 ## 輸入與輸出
 

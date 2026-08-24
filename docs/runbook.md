@@ -353,11 +353,14 @@ Claude ACP 也保留完整 rollback，不需要改 code：
 Slack 明確委派 Claude Code 時，訊息必須從開頭使用固定 prefix：
 
 ```text
-delegate claude-code: 請檢查這個問題並整理修正步驟
+!claude 請檢查這個問題並整理修正步驟
 ```
 
-OMO 會去掉 prefix，把完整剩餘任務交給 `@claude-code`；不會先用本地 agent，也不會靜默改走本地
-agent。沒有這個 prefix 的一般訊息維持 OMO 自動 routing。
+`!claude` 是強制且可預期的 Claude ACP 入口。OMO 會去掉指令，立即把完整剩餘任務交給
+`@claude-code`；不會先用本地 agent，也不會靜默改走本地 agent。沒有 `!claude` 的一般訊息維持
+OMO normal routing。這是 OMO soft routing policy，不是 hard security gate：只有跨檔案或跨 repo 架構 review、
+已嘗試兩次仍無法定位的 bug、使用者明確要求獨立第二意見，或涉及 permissions、secrets 或
+data loss 的高風險決策，才允許自動委派 Claude ACP。一般查詢、單檔修改、Slack list 操作不可自動委派。
 
 Claude ACP 也保留 rollback，不需要改 code：
 
