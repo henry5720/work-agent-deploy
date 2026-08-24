@@ -506,7 +506,9 @@ for field in ("description", "orchestratorPrompt"):
     assert trigger in claude_agent[field], f"{field} omits the explicit Claude trigger"
     assert old_trigger not in claude_agent[field], f"{field} retains the old Claude trigger"
 assert "starts exactly with" in claude_agent["orchestratorPrompt"]
-assert "strip that command and immediately delegate" in claude_agent["orchestratorPrompt"]
+assert "strip that command and immediately call the OpenCode v2 `subagent` tool exactly once" in claude_agent["orchestratorPrompt"]
+assert '`agent: "claude-code"`' in claude_agent["orchestratorPrompt"]
+assert "call `task`, or call `acp_run` yourself" in claude_agent["orchestratorPrompt"]
 assert "Do not answer with the local agent" in claude_agent["orchestratorPrompt"]
 for term in policy_terms:
     assert term in claude_agent["orchestratorPrompt"], f"orchestratorPrompt omits policy text: {term}"
