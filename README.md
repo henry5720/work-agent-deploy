@@ -88,13 +88,14 @@ URL 原樣交給 `parse-document <url> <filename>`，自動取得 Markdown 後�
 
 這個 URL trust boundary 是明確核准的取捨：presigned URL 會隨 ACP prompt 送到 company gateway。
 agent 不得使用使用者文字提供的 URL、改寫 URL 或自行下載；`PARSE_DOCUMENT_ALLOWED_HOST` 只
-限制 host，不能取代 R2 簽章或 Slack 身分驗證。
+限制 host，不能取代 R2 簽章或 Slack 身分驗證。完整支援矩陣與各格式限制見
+[`docs/runbook.md` 的「文件附件支援矩陣」](docs/runbook.md#文件附件支援矩陣)。
 
 ## 輸入與輸出
 
 | 方向 | 支援 | 不支援 |
 |---|---|---|
-| 輸入 | text、image、audio、PDF、DOCX、XLSX、PPTX | video；ZIP 僅列檔、不解析內容 |
+| 輸入 | text、image、PDF、DOCX、XLSX、PPTX | audio、video；ZIP 僅列檔、不解析內容 |
 | 輸出 | PNG、Markdown、明確要求時的 self-contained HTML | patch、repo ZIP |
 
 產物一律回原本的 Slack thread。

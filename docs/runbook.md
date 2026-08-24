@@ -149,6 +149,22 @@ OpenAB 提供的唯一輸入，agent 不得使用使用者文字中的 URL、改
 prompt 傳給 company gateway，是已明確同意的 trust boundary。ZIP 只用同一個指令安全列出
 metadata，不解壓、不讀 member 內容；video 仍直接回覆不支援。
 
+#### 文件附件支援矩陣
+
+| 輸入類型 | 狀態 | 處理方式與限制 |
+|---|---|---|
+| Slack 文字訊息 | 支援 | OpenAB 直接注入 ACP prompt，由 company gateway 的模型處理。 |
+| 圖片 | 支援 | OpenAB 原生 media 路徑交給支援視覺輸入的模型處理；不經 `parse-document` 或 Docling。 |
+| PDF | 支援文字型 PDF | OpenAB 傳 R2 presigned URL；`parse-document` 下載後用 Docling 轉 Markdown，保留 layout/table 結構；最多 200 頁。掃描 PDF 不支援 OCR。 |
+| DOCX、XLSX、PPTX | 支援 | OpenAB 傳 R2 presigned URL；`parse-document` 下載後用 Docling Office backend 轉 Markdown。 |
+| ZIP | 僅列檔 | OpenAB 傳 R2 presigned URL；`parse-document` 最多列出 1,000 個安全檔名與 metadata，不解壓、不讀內容。 |
+| CSV、`.doc`、`.xls`、`.ppt` | 不支援 | `parse-document` 只接受 PDF 與 OOXML 格式。 |
+| audio | 不支援 | STT 未啟用；不轉錄。 |
+| video | 不支援 | 不下載、轉檔或解析。 |
+
+所有文件單檔上限 50 MiB。下載與 Docling 解析各有 120 秒上限；轉出的 Markdown 最多 10 MiB。
+PDF 使用 image build 時預取的 layout/table artifacts，runtime 不下載模型。
+
 在 Slack確認：
 
 1. DM詢問一個 repo問題。
