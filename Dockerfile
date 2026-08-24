@@ -21,7 +21,7 @@ USER root
 # git：-opencode base image（node:22-trixie-slim）沒有 git，但唯讀 snapshot 偵察
 # 全靠 `git show origin/<branch>:<path>` 這類指令。python3：slack-list 需要。
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl git python3 python3-pip \
+    && apt-get install -y --no-install-recommends curl git libxcb1 python3 python3-pip \
     && rm -rf /var/lib/apt/lists/*
 RUN python3 -c 'import sys; assert (3, 10) <= sys.version_info[:2] < (3, 14), sys.version' \
     && python3 -m pip install --no-cache-dir --break-system-packages "docling==${DOCLING_VERSION}" \
