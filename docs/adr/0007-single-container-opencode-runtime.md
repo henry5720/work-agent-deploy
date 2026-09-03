@@ -57,7 +57,10 @@ agent 手上並不改變它能做什麼。
 
 ## Implementation update
 
-目前 Slack 強制入口已改為 `!claude <任務>`；現況以
+目前使用 OMO Slim v2.2.15 內建的 autonomous routing，不需要特殊 Slack prefix。OMO 會依任務自行決定
+是否透過 `@claude-code` ACP wrapper 委派 Claude Code specialist；這是 LLM routing，非 deterministic，
+不保證每個複雜工作都會交給 Claude Code。orchestrator 不直接啟動 ACP；wrapper 失敗時明確回報委派失敗，
+不得靜默 fallback。現況以
 [`config/opencode/oh-my-opencode-slim.json`](../../config/opencode/oh-my-opencode-slim.json) 為準。
 上方 Decision 的 trigger 是本 ADR 的歷史紀錄，不代表目前入口。
 

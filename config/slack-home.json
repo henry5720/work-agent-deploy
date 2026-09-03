@@ -34,7 +34,7 @@
       "elements": [
         {
           "type": "mrkdwn",
-          "text": "想讓 Claude Code 執行任務，請明確寫：`!claude <任務>`"
+          "text": "不需要特殊 prefix；OMO 會依任務自行決定是否委派 Claude Code specialist。這是 LLM routing，非 deterministic，不保證每個複雜工作都會交給 Claude Code。"
         }
       ]
     },
@@ -66,7 +66,7 @@
       "type": "section",
       "text": {
         "type": "mrkdwn",
-         "text": "*4. 產出可用檔案*\n把需求說清楚，我可以將結果整理成訊息、PNG、Markdown，或明確要求的單一檔案 HTML prototype。\n• `把這份流程整理成 Markdown`\n• `做一張 PNG 流程圖`\n• `做成單一檔案的 HTML prototype`\n• `!claude 檢查登入失敗的相關檔案並整理結果`"
+         "text": "*4. 產出可用檔案*\n把需求說清楚，我可以將結果整理成訊息、PNG、Markdown，或明確要求的單一檔案 HTML prototype。\n• `把這份流程整理成 Markdown`\n• `做一張 PNG 流程圖`\n• `做成單一檔案的 HTML prototype`\n• `檢查登入失敗的相關檔案並整理結果`"
       }
     },
     {

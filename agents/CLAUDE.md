@@ -6,19 +6,16 @@
 
 OpenCode OMO 可委派同一個 container 內的 Claude Code ACP specialist。它使用固定 build 版本的
 `/usr/local/bin/claude-agent-acp`，不是 runtime `npx` 下載；Claude login state 使用既有的
-`claude-credentials` named volume。首次需要時登入一次 `claude auth login`，之後由 OMO orchestrator 委派。
+`claude-credentials` named volume。首次需要時登入一次 `claude auth login`，之後由 OMO routing 決定是否委派。
 
-## 明確委派 Claude Code
+## OMO autonomous routing
 
-- Slack user text（不是 `<sender_context>`）若從開頭**完全以** `!claude` 開始，這是強制且可預期的入口；
-  去掉這個 prefix 後，OMO 必須立即透過 `@claude-code` ACP wrapper 委派完整剩餘任務，不能先用本地
-  agent 或本地工具處理，也不能由 orchestrator 直接呼叫 ACP。
-- 若 wrapper 委派無法執行，明確回報委派失敗，不要把任務 fallback 成本地處理，也不要重試本地處理。
-- 沒有 `!claude` 的一般訊息，保留 OMO normal routing。這是 OMO soft routing policy，不是 hard security gate。
-- 無 prefix 的訊息只有符合下列任一條件時，才允許自動委派 Claude ACP：跨檔案或跨 repo 架構 review；
-  已嘗試兩次仍無法定位的 bug；使用者明確要求獨立第二意見；涉及 permissions、secrets 或 data loss
-  的高風險決策。
-- 一般查詢、單檔修改、Slack list 操作不可自動委派。
+- 不需要特殊 prefix；OMO Slim v2.2.15 使用內建 autonomous routing，依任務自行決定是否透過
+  `@claude-code` ACP wrapper 委派 Claude Code specialist。這是 LLM routing，非 deterministic，不保證每個複雜工作
+  都會交給 Claude Code。
+- OMO orchestrator 不直接啟動 ACP，只能透過 `@claude-code` ACP wrapper 委派。
+- 若 wrapper 委派無法執行，明確回報委派失敗，不要靜默 fallback 成本地處理，也不要改由 orchestrator
+  直接重試 ACP。
 
 ## 輸入與輸出
 

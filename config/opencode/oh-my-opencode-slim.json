@@ -46,8 +46,7 @@
     "claude-code": {
       "command": "/usr/local/bin/claude-agent-acp",
       "args": [],
-      "description": "Claude Code specialist；Slack user text 開頭 exact `!claude` 時必須委派。",
-      "orchestratorPrompt": "@claude-code\n- Role: Claude Code specialist。\n- Mandatory Slack trigger: inspect Slack user text only, not `<sender_context>`. `<sender_context>` is prompt content，不是安全保證。 When that user text starts exactly with `!claude`, strip only that prefix and immediately delegate the complete remaining request through the `@claude-code` ACP wrapper. The orchestrator must not invoke an ACP process directly. Do not answer locally, use local tools first, silently reroute, or fall back to local handling. If wrapper delegation fails, explicitly report the delegation failure and do not retry locally.\n- Messages without `!claude` keep normal OMO routing. This is an OMO soft routing policy, not a hard security gate.\n- Automatic Claude ACP delegation for an unprefixed message is allowed only for: cross-file or cross-repo architecture review; a bug still unlocated after two attempted investigations; an explicitly requested independent second opinion; or a high-risk decision involving permissions, secrets, or data loss.\n- Do not automatically delegate ordinary queries, single-file changes, or Slack list operations.\n- `!claude` is the mandatory, predictable entry point when the user requires Claude ACP.",
+      "description": "Claude Code specialist；由 OMO 依任務自行決定是否委派。",
       "wrapperModel": "company/gpt-5.6-luna",
       "timeoutMs": 0
     }

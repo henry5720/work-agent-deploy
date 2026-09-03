@@ -204,21 +204,19 @@ Runtime或部署故障造成工具不能執行時，product-context bot只告知
 ## Agent Runtime 與版本
 
 預設 agent runtime 是 OpenCode 的原生 ACP（`opencode acp`），加上 oh-my-opencode-slim（OMO）
-plugin。OMO 的模型分工是 Luna retrieval、Terra synthesis；`acpAgents.claude-code` 是依 routing
-guidance 使用的 Claude Code ACP specialist，設定在
+plugin。OMO 的模型分工是 Luna retrieval、Terra synthesis；`acpAgents.claude-code` 是由 OMO 依任務
+自行決定是否委派的 Claude Code ACP specialist，設定在
 [`../config/opencode/oh-my-opencode-slim.json`](../config/opencode/oh-my-opencode-slim.json)。
 
 Claude specialist 的 ACP adapter 是 image 內由 Docker pin 安裝的 `claude-agent-acp`，不是 runtime
 `npx` download；Claude Code CLI 也在 image 內固定版本。它與 Claude rollback 共用
-`claude-credentials` named volume。首次需要時執行一次 `claude auth login`，之後由 OMO orchestrator
-委派。
+`claude-credentials` named volume。首次需要時執行一次 `claude auth login`，之後由 OMO 依任務 routing
+決定是否透過 wrapper 委派。
 
-Slack routing 的 deterministic explicit trigger 是 `!claude`：這是強制且可預期的 Claude ACP 入口。針對
-Slack user text（不是 `<sender_context>`），OMO 去掉 prefix 後立即透過 `@claude-code` ACP wrapper 把完整
-剩餘任務委派出去；orchestrator 不直接呼叫 ACP，也不 fallback。wrapper 失敗時明確回報委派失敗。無 prefix 的訊息維持 OMO normal routing；只有
-跨檔案或跨 repo 架構 review、已嘗試兩次仍無法定位的 bug、使用者明確要求獨立第二意見，或涉及
-permissions、secrets 或 data loss 的高風險決策，才允許自動委派 Claude ACP。這是 OMO soft routing
-policy，不是 hard security gate；一般查詢、單檔修改、Slack list 操作不可自動委派。
+Slack 不需要特殊 prefix，也沒有 prefix 強制委派規則。OMO Slim v2.2.15 使用內建 autonomous routing，
+依任務自行決定是否透過 `@claude-code` ACP wrapper 委派 Claude Code；這是 LLM routing，非 deterministic，
+不保證每個複雜工作都會交給 Claude Code。orchestrator 不直接啟動 ACP；wrapper 失敗時明確回報委派失敗，
+不得靜默 fallback 到本地處理。
 
 Claude ACP 沒有被刪掉，是保留的 rollback。切換只改
 [`../config/versions.env`](../config/versions.env) 的 `OPENAB_AGENT_RUNTIME`：

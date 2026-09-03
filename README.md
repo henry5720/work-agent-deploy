@@ -30,7 +30,7 @@ Container 沒有 GitHub token、SSH key、Docker socket或可寫的 repo checkou
 
 ## Agent runtime 與 Claude specialist
 
-預設 `opencode acp`；OMO 可依 routing guidance 委派同一個 container 內、由 Docker image
+預設 `opencode acp`；OMO 可依任務自行決定是否委派同一個 container 內、由 Docker image
 固定安裝的 Claude Code ACP specialist。Claude ACP 仍保留完整 rollback，切換只改
 [`config/versions.env`](config/versions.env) 的 `OPENAB_AGENT_RUNTIME`：
 
@@ -43,18 +43,12 @@ specialist 的 `acpAgents.claude-code` 執行固定版 `/usr/local/bin/claude-ag
 `npx` 下載。Claude login state 使用 `claude-credentials` named volume；首次需要時執行一次
 `./scripts/compose.sh exec backlog-agent claude auth login`。
 
-Slack 若要明確交給 Claude Code，訊息必須從開頭使用：
+不需要特殊 prefix。OMO Slim v2.2.15 使用內建 autonomous routing，依任務自行決定是否透過
 
-```text
-!claude 請檢查這個問題並整理修正步驟
-```
+`@claude-code` ACP wrapper 委派 Claude Code specialist。這是 LLM routing，非 deterministic，不保證每個複雜工作
+都會交給 Claude Code。orchestrator 不直接啟動 ACP；wrapper 失敗時要明確回報委派失敗，不靜默
+fallback 到本地處理。
 
-`!claude` 是強制且可預期的 Claude ACP 入口；針對 Slack user text（不是 `<sender_context>`），OMO 去掉
-prefix 後立即透過 `@claude-code` ACP wrapper 把完整剩餘任務委派出去。orchestrator 不直接呼叫 ACP，
-也不 fallback 到本地處理；wrapper 失敗時要明確回報委派失敗。無 prefix 的一般訊息維持 OMO normal routing。
-這是 OMO soft routing policy，不是 hard security gate：
-只有跨檔案或跨 repo 架構 review、已嘗試兩次仍無法定位的 bug、使用者明確要求獨立第二意見，或涉及
- permissions／secrets／data loss 的高風險決策，才允許自動委派 Claude ACP。一般查詢、單檔修改、Slack list 操作不可自動委派。
 
 所有 compose 指令走 `./scripts/compose.sh`；直接 `docker compose` 會中止，因為版本只有
 `config/versions.env` 一份正本。

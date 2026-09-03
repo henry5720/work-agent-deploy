@@ -373,20 +373,12 @@ Claude ACP 也保留完整 rollback，不需要改 code：
 ./scripts/compose.sh exec backlog-agent claude auth login
 ```
 
-之後由 OMO orchestrator 委派。Claude login state 保存在既有 `claude-credentials` named volume。
+之後由 OMO 依任務 routing 決定是否委派。Claude login state 保存在既有 `claude-credentials` named volume。
 
-Slack 明確委派 Claude Code 時，訊息必須從開頭使用固定 prefix：
-
-```text
-!claude 請檢查這個問題並整理修正步驟
-```
-
-`!claude` 是強制且可預期的 Claude ACP 入口。針對 Slack user text（不是 `<sender_context>`），OMO 會去掉
-prefix，立即透過 `@claude-code` ACP wrapper 把完整剩餘任務交給 Claude；不會先用本地 agent、本地工具，
-也不會由 orchestrator 直接呼叫 ACP 或 fallback。wrapper 失敗時要明確回報委派失敗。沒有 `!claude` 的
-一般訊息維持 OMO normal routing。這是 OMO soft routing policy，不是 hard security gate：只有跨檔案或跨 repo 架構 review、
-已嘗試兩次仍無法定位的 bug、使用者明確要求獨立第二意見，或涉及 permissions、secrets 或
-data loss 的高風險決策，才允許自動委派 Claude ACP。一般查詢、單檔修改、Slack list 操作不可自動委派。
+Slack 不需要特殊 prefix，也沒有 prefix 強制委派規則。OMO Slim v2.2.15 使用內建 autonomous routing，
+依任務自行決定是否透過 `@claude-code` ACP wrapper 委派 Claude Code；這是 LLM routing，非 deterministic，
+不保證每個複雜工作都會交給 Claude Code。orchestrator 不直接啟動 ACP；wrapper 失敗時要明確回報委派失敗，
+不靜默 fallback 到本地處理。
 
 Claude ACP 也保留 rollback，不需要改 code：
 

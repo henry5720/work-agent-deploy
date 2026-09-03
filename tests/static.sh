@@ -531,87 +531,57 @@ for agent, cfg in preset.items():
 assert omo["companion"]["enabled"] is False, "no desktop window in a container"
 
 # Claude Code is an OMO specialist inside this same container. It invokes the
-# image-installed adapter directly; runtime npx download is not allowed.
+# image-installed adapter directly; runtime npx download is not allowed. Routing
+# is OMO Slim's built-in autonomous LLM routing, not a deployment-level trigger.
 claude_agent = omo["acpAgents"]["claude-code"]
 assert claude_agent["command"] == "/usr/local/bin/claude-agent-acp", claude_agent
 assert claude_agent["args"] == [], claude_agent
 assert "npx" not in json.dumps(claude_agent), claude_agent
-trigger = "!claude"
-old_trigger = "delegate claude-" + "code:"
-prompt = claude_agent["orchestratorPrompt"]
-for field in ("description", "orchestratorPrompt"):
-    assert trigger in claude_agent[field], f"{field} omits the explicit Claude trigger"
-    assert old_trigger not in claude_agent[field], f"{field} retains the old Claude trigger"
-for term in (
-    "Slack user text",
-    "not `<sender_context>`",
-    "strip only that prefix",
-    "immediately delegate",
-    "complete remaining request",
-    "@claude-code",
-    "ACP wrapper",
-    "must not invoke an ACP process directly",
-    "fall back to local handling",
-    "explicitly report the delegation failure",
-):
-    assert term in prompt, f"orchestratorPrompt omits routing invariant: {term}"
-for forbidden in ("subagent", "task", "acp_run"):
-    assert forbidden not in prompt, f"orchestratorPrompt names unavailable direct tool: {forbidden}"
-for term in (
-    "normal OMO routing",
-    "soft routing policy",
-    "hard security gate",
-    "permissions, secrets, or data loss",
-    "ordinary queries",
-    "single-file changes",
-    "Slack list operations",
-):
-    assert term in prompt, f"orchestratorPrompt omits policy invariant: {term}"
-for name in (
+assert "orchestratorPrompt" not in claude_agent, claude_agent
+assert "!claude" not in json.dumps(claude_agent), claude_agent
+assert "prefix" not in claude_agent["description"].lower(), claude_agent["description"]
+assert "自行決定" in claude_agent["description"], claude_agent["description"]
+active_routing_docs = (
+    "CONTEXT.md",
     "agents/CLAUDE.md",
     "README.md",
     "docs/runbook.md",
+    "config/slack-home.json",
+    "docs/system-design.md",
+)
+for name in active_routing_docs:
+    text = (root / name).read_text()
+    assert "!claude" not in text, f"{name} retains the removed Slack trigger"
+    assert "不需要特殊 prefix" in text, f"{name} omits the no-prefix routing policy"
+    assert "依任務自行決定" in text, f"{name} omits autonomous task routing"
+    assert "LLM routing" in text, f"{name} omits the LLM routing description"
+    assert "非 deterministic" in text, f"{name} omits nondeterministic routing"
+    assert "不保證每個複雜工作" in text, f"{name} promises too much Claude delegation"
+    for forbidden in ("強制且可預期", "固定 prefix", "deterministic explicit trigger"):
+        assert forbidden not in text, f"{name} retains the old mandatory trigger policy: {forbidden}"
+
+for name in (
+    "CONTEXT.md",
+    "agents/CLAUDE.md",
+    "README.md",
+    "docs/runbook.md",
+    "docs/system-design.md",
+    "docs/adr/0007-single-container-opencode-runtime.md",
 ):
     text = (root / name).read_text()
-    assert trigger in text, f"{name} omits the explicit Claude trigger"
-    assert old_trigger not in text, f"{name} retains the old Claude trigger"
-    assert "強制且可預期" in text, f"{name} omits the predictable mandatory entry-point policy"
     assert "@claude-code" in text and "ACP wrapper" in text, (
         f"{name} omits wrapper routing"
     )
-    assert "<sender_context>" in text, f"{name} does not distinguish user text from sender context"
+    assert "orchestrator 不直接啟動 ACP" in text, f"{name} permits direct ACP startup"
     assert "委派失敗" in text, f"{name} omits explicit delegation failure handling"
-    assert "fallback" in text or "fallback" in text.lower(), f"{name} omits no-fallback policy"
-
-# These are active user-facing paths. Historical ADR text is checked separately
-# because its old trigger is intentionally retained as historical context.
-for name in (
-    "config/slack-home.json",
-    "docs/system-design.md",
-):
-    text = (root / name).read_text()
-    assert trigger in text, f"{name} omits the current Claude trigger"
-    assert old_trigger not in text, f"{name} retains the old Claude trigger"
-
-system_design = (root / "docs/system-design.md").read_text()
-for term in (
-    "強制且可預期",
-    "Slack user text（不是 `<sender_context>`）",
-    "立即透過 `@claude-code` ACP wrapper",
-    "orchestrator 不直接呼叫 ACP",
-    "不 fallback",
-    "wrapper 失敗時明確回報委派失敗",
-    "OMO normal routing",
-    "OMO soft routing",
-    "hard security gate",
-):
-    assert term in system_design, f"docs/system-design.md omits routing invariant: {term}"
+    assert "fallback" in text.lower() and "靜默" in text, f"{name} omits no-silent-fallback policy"
 
 adr = (root / "docs/adr/0007-single-container-opencode-runtime.md").read_text()
 assert "## Implementation update" in adr
-assert "目前 Slack 強制入口已改為 `!claude <任務>`" in adr
+assert "delegate claude-code:" in adr, "ADR 0007's historical Decision was rewritten"
+assert "目前使用 OMO Slim v2.2.15 內建的 autonomous routing" in adr
+assert "上方 Decision 的 trigger 是本 ADR 的歷史紀錄" in adr
 assert "../../config/opencode/oh-my-opencode-slim.json" in adr
-assert "歷史紀錄" in adr
 # The work-helper catalog is not trimmed here: no agent narrows skills or MCPs,
 # and no catalog-level disable list exists.
 for agent, cfg in preset.items():
