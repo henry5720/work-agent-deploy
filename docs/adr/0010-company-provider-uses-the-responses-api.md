@@ -72,3 +72,20 @@ OpenCode 依 provider 設定的 `npm` 欄位決定要呼叫 SDK 的哪個 factor
   沒有人工確認過 route 的 adapter 不該悄悄上 production。
 - Claude ACP rollback 不受影響。那條路徑走 Claude 訂閱，`COMPANY_GATEWAY_*` 只給
   `company-image` 用（見 [0008](0008-restricted-company-image-cli.md)）。
+
+## Implementation update
+
+2026-09-11：provider 多宣告一個 `gpt-6-astra`，並補上當初刻意不加的 model metadata
+（`reasoning`、`tool_call`、`attachment`、`limit`）。
+
+上面 Decision 說「不加這些 metadata，這次只修已診斷的那一個欄位」—— 那句話在只有 terra 與
+luna 的時候成立：兩個都是 272k context，OpenCode 用預設值推導不會差太多。astra 是
+1,050,000 context，不宣告 `limit` 等於讓 OpenCode 拿預設值去切一個十倍大的窗，該送的 context
+會被自己截掉。所以這次連同 terra、luna 一起把 metadata 補齊，四個欄位的值抄自本機 chezmoi
+那份已經在用的設定。
+
+沒有變的：`npm` 仍然是 `@ai-sdk/openai`，`baseURL`／`apiKey` 仍然是 `{env:...}` 引用，
+`COMPANY_GATEWAY_BASE_URL` 的語意（gateway 提供 `/responses` 的前綴）也沒變。
+`tests/provider-route.py` 的 model ID 集合跟著加 astra —— 它驗的仍然是 route，不是 gateway
+收不收；astra 在公司 gateway 上到底有沒有 expose，只有 `docs/runbook.md` 那條人工 release
+gate 能證明。

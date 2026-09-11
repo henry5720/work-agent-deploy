@@ -45,16 +45,6 @@
       "type": "section",
       "text": {
         "type": "mrkdwn",
-        "text": "*我是怎麼組起來的*\nSlack（OpenAB）→ OpenCode → omo-slim 的 orchestrator 分工：\n• 統籌、整理、需要想清楚的部分用 *Terra*（`company/gpt-5.6-terra`）\n• 大量翻找程式碼、讀檔這類力氣活用 *Luna*（`company/gpt-5.6-luna`）\n兩個都跑在公司自己的 gateway 上。orchestrator 覺得需要時，會再把工作委派給 Claude Code。\n模型是設定檔決定的，沒辦法在 Slack 裡切換；要換得改設定並重啟。"
-      }
-    },
-    {
-      "type": "divider"
-    },
-    {
-      "type": "section",
-      "text": {
-        "type": "mrkdwn",
         "text": "*1. 查待辦、建立與整理待辦*\n我會照現在跟我說話的人查你的待辦，也能搜尋、讀某一列的完整留言、整理 PM 回了什麼。要新增就直接說；同名還沒完成的那列不會被重開，我會把你加進既有那一列。\n• `看一下我還有哪些待辦`\n• `PM 有沒有回我？`\n• `新增待辦：庫存匯出缺少批號`"
       }
     },
@@ -95,6 +85,18 @@
         {
           "type": "mrkdwn",
           "text": "我不會改 code、不會開 GitHub issue、不會改待辦狀態，也不會通知 PM 驗收 —— 那些要人來做。我看到的程式碼是最近一次同步的版本，不一定等於 GitHub 現在的樣子。\n附件單檔上限 50 MiB、連結 1 小時內有效，內容會送到 company gateway 處理。ZIP 只列得出檔名，影片不支援。"
+        }
+      ]
+    },
+    {
+      "type": "divider"
+    },
+    {
+      "type": "context",
+      "elements": [
+        {
+          "type": "mrkdwn",
+          "text": "*組成*（想知道再看）：Slack 的訊息由 OpenAB 收下，每個對話串開一個 OpenCode，裡面裝的 omo-slim 把工作分給不同角色：統籌和要想清楚的部分用 *Astra*（`company/gpt-6-astra`），翻找程式碼、讀檔這類力氣活用 *Luna*（`company/gpt-5.6-luna`），兩個都跑在公司自己的 gateway 上。統籌的那個覺得需要時，會把工作委派給 Claude Code。模型是設定檔決定的，沒辦法在 Slack 裡切換。"
         }
       ]
     }

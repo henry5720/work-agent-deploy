@@ -190,10 +190,10 @@ def main() -> int:
         "apiKey is not the {env:...} placeholder",
     )
 
-    # 換 adapter 不准動 model ID。gateway 認的是這兩個字串。
+    # 換 adapter 不准動 model ID。gateway 認的是這幾個字串。
     check(
         "the model IDs are unchanged",
-        set(company["models"]) == {"gpt-5.6-terra", "gpt-5.6-luna"},
+        set(company["models"]) == {"gpt-6-astra", "gpt-5.6-terra", "gpt-5.6-luna"},
         f"models={sorted(company['models'])}",
     )
 

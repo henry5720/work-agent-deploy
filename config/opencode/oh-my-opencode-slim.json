@@ -5,40 +5,64 @@
   "presets": {
     "company": {
       "orchestrator": {
-        "model": "company/gpt-5.6-terra",
-        "variant": "high",
-        "skills": ["*"],
-        "mcps": ["*"]
+        "model": "company/gpt-6-astra",
+        "variant": "medium",
+        "skills": [
+          "*"
+        ],
+        "mcps": [
+          "*"
+        ]
       },
       "oracle": {
-        "model": "company/gpt-5.6-terra",
+        "model": "company/gpt-6-astra",
         "variant": "high",
-        "skills": ["*"],
-        "mcps": ["*"]
+        "skills": [
+          "*"
+        ],
+        "mcps": [
+          "*"
+        ]
       },
       "explorer": {
         "model": "company/gpt-5.6-luna",
         "variant": "low",
-        "skills": ["*"],
-        "mcps": ["*"]
+        "skills": [
+          "*"
+        ],
+        "mcps": [
+          "*"
+        ]
       },
       "librarian": {
         "model": "company/gpt-5.6-luna",
         "variant": "low",
-        "skills": ["*"],
-        "mcps": ["*"]
+        "skills": [
+          "*"
+        ],
+        "mcps": [
+          "*"
+        ]
       },
       "designer": {
         "model": "company/gpt-5.6-luna",
         "variant": "medium",
-        "skills": ["*"],
-        "mcps": ["*"]
+        "skills": [
+          "*"
+        ],
+        "mcps": [
+          "*"
+        ]
       },
       "fixer": {
         "model": "company/gpt-5.6-luna",
-        "variant": "high",
-        "skills": ["*"],
-        "mcps": ["*"]
+        "variant": "medium",
+        "skills": [
+          "*"
+        ],
+        "mcps": [
+          "*"
+        ]
       }
     }
   },
@@ -52,7 +76,13 @@
     }
   },
   "image_routing": "direct",
-  "companion": { "enabled": false },
-  "multiplexer": { "type": "none" },
-  "interview": { "autoOpenBrowser": false }
+  "companion": {
+    "enabled": false
+  },
+  "multiplexer": {
+    "type": "none"
+  },
+  "interview": {
+    "autoOpenBrowser": false
+  }
 }

@@ -103,7 +103,8 @@ WORK_HELPER_ISSUE_MODE=manual
 這些 runtime secret 全部住在同一個 container，沒有 broker 也沒有 token 隔離層。理由與取捨見
 [`adr/0007-single-container-opencode-runtime.md`](adr/0007-single-container-opencode-runtime.md)。
 
-`config/opencode/opencode.json` 裡的模型 ID（`company/gpt-5.6-terra`、`company/gpt-5.6-luna`）
+`config/opencode/opencode.json` 裡的模型 ID（`company/gpt-6-astra`、`company/gpt-5.6-terra`、
+`company/gpt-5.6-luna`）
 必須對得上公司 gateway 實際 expose 的名稱。第一次接上 gateway 時先確認：
 
 ```bash
@@ -440,9 +441,14 @@ crontab -l | grep work-agent-artifact-cleanup
 `COMPANY_GATEWAY_BASE_URL` 或 OpenCode 版本之後都要重跑：
 
 ```bash
-./scripts/compose.sh exec backlog-agent \
-  opencode run --pure --model company/gpt-5.6-terra 'reply with the single word ok'
+for m in gpt-6-astra gpt-5.6-terra gpt-5.6-luna; do
+  ./scripts/compose.sh exec backlog-agent \
+    opencode run --pure --model "company/$m" 'reply with the single word ok'
+done
 ```
+
+三個都要跑。preset 用到的是 astra 與 luna，terra 仍宣告在 provider 裡；gateway 少 expose 其中
+一個，只有這裡會看得出來。
 
 回文字就算過。回 HTTP 405 代表請求打到 `{baseURL}/chat/completions` 而 gateway 只收
 `/responses` —— 先看 `provider.company.npm` 是不是 `@ai-sdk/openai`，再看

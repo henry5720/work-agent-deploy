@@ -507,16 +507,6 @@ assert oc["instructions"] == ["/home/node/CLAUDE.md"], oc["instructions"]
 # `npm` field, and @ai-sdk/openai-compatible has no `responses` factory, so it
 # posts to {baseURL}/chat/completions and the gateway answers HTTP 405. That
 # shipped once. tests/provider-route.py derives the route; this pins the name.
-# The Home tells PMs which models answer them, so it carries model ids that also
-# live in this config. config is the source of truth; this keeps the copy honest
-# instead of letting the Home drift into a second, editable list.
-home = (root / "config/slack-home.json").read_text()
-for model_id in oc["provider"]["company"]["models"]:
-    assert f"company/{model_id}" in home, (
-        f"config/slack-home.json does not name company/{model_id}; the Home "
-        "describes the models to users and must match the provider config"
-    )
-
 assert oc["provider"]["company"]["npm"] == "@ai-sdk/openai", (
     "the company provider must use @ai-sdk/openai (Responses API); see "
     "docs/adr/0010-company-provider-uses-the-responses-api.md"
@@ -538,7 +528,8 @@ assert oc["small_model"] in (f"company/{m}" for m in models)
 omo = json.loads((root / "config/opencode/oh-my-opencode-slim.json").read_text())
 assert omo["autoUpdate"] is False, "OMO must not self-update off a pinned image"
 preset = omo["presets"][omo["preset"]]
-assert preset["orchestrator"]["model"] == "company/gpt-5.6-terra", "Terra synthesises"
+assert preset["orchestrator"]["model"] == "company/gpt-6-astra", "Astra orchestrates"
+assert preset["oracle"]["model"] == "company/gpt-6-astra", "Astra takes the hard reads"
 assert preset["explorer"]["model"] == "company/gpt-5.6-luna", "Luna retrieves"
 assert preset["librarian"]["model"] == "company/gpt-5.6-luna", "Luna retrieves"
 assert omo["image_routing"] == "direct", "image attachments go to the orchestrator"
@@ -549,6 +540,17 @@ for agent, cfg in preset.items():
         "opencode.json does not declare"
     )
 assert omo["companion"]["enabled"] is False, "no desktop window in a container"
+
+# The Home tells PMs which models answer them. Pin it to the models the preset
+# actually runs, not to everything the provider declares: config stays the
+# source of truth, and renaming a model without touching the Home fails here
+# instead of leaving users reading a stale name.
+home = (root / "config/slack-home.json").read_text()
+for model in sorted({cfg["model"] for cfg in preset.values()}):
+    assert model in home, (
+        f"config/slack-home.json does not name {model}; the Home describes the "
+        "models to users and must match the OMO preset"
+    )
 
 # Claude Code is an OMO specialist inside this same container. It invokes the
 # image-installed adapter directly; runtime npx download is not allowed. Routing
@@ -618,7 +620,7 @@ for key in ("disabled_skills", "disabled_mcps", "disabled_agents", "disabled_too
     assert key not in omo, f"{key} trims the catalog; behaviour limits belong in agents/CLAUDE.md"
 
 # Every model the gateway must expose, in one place, so the runbook can list it.
-assert set(models) == {"gpt-5.6-terra", "gpt-5.6-luna"}, sorted(models)
+assert set(models) == {"gpt-6-astra", "gpt-5.6-terra", "gpt-5.6-luna"}, sorted(models)
 PY
 
 grep -Fq 'opencode-data:/home/node/.local/share/opencode' "$ROOT/compose.yaml"
