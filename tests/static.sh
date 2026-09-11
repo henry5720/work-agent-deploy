@@ -564,9 +564,16 @@ for name in active_routing_docs:
     assert "!claude" not in text, f"{name} retains the removed Slack trigger"
     assert "不需要特殊 prefix" in text, f"{name} omits the no-prefix routing policy"
     assert "依任務自行決定" in text, f"{name} omits autonomous task routing"
-    assert "LLM routing" in text, f"{name} omits the LLM routing description"
-    assert "非 deterministic" in text, f"{name} omits nondeterministic routing"
-    assert "不保證每個複雜工作" in text, f"{name} promises too much Claude delegation"
+    if name == "config/slack-home.json":
+        # The Home is the PM-facing page. It has to carry the same non-promise,
+        # but in plain words -- OMO, ACP and "LLM routing" are names for how the
+        # deployment is wired, and a PM reading them learns nothing they can act
+        # on. The internal vocabulary stays pinned in the maintainer docs below.
+        assert "不保證" in text, f"{name} promises too much Claude delegation"
+    else:
+        assert "LLM routing" in text, f"{name} omits the LLM routing description"
+        assert "非 deterministic" in text, f"{name} omits nondeterministic routing"
+        assert "不保證每個複雜工作" in text, f"{name} promises too much Claude delegation"
     for forbidden in ("強制且可預期", "固定 prefix", "deterministic explicit trigger"):
         assert forbidden not in text, f"{name} retains the old mandatory trigger policy: {forbidden}"
 
