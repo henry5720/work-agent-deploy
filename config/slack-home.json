@@ -45,6 +45,16 @@
       "type": "section",
       "text": {
         "type": "mrkdwn",
+        "text": "*我是怎麼組起來的*\nSlack（OpenAB）→ OpenCode → omo-slim 的 orchestrator 分工：\n• 統籌、整理、需要想清楚的部分用 *Terra*（`company/gpt-5.6-terra`）\n• 大量翻找程式碼、讀檔這類力氣活用 *Luna*（`company/gpt-5.6-luna`）\n兩個都跑在公司自己的 gateway 上。orchestrator 覺得需要時，會再把工作委派給 Claude Code。\n模型是設定檔決定的，沒辦法在 Slack 裡切換；要換得改設定並重啟。"
+      }
+    },
+    {
+      "type": "divider"
+    },
+    {
+      "type": "section",
+      "text": {
+        "type": "mrkdwn",
         "text": "*1. 查待辦、建立與整理待辦*\n我會照現在跟我說話的人查你的待辦，也能搜尋、讀某一列的完整留言、整理 PM 回了什麼。要新增就直接說；同名還沒完成的那列不會被重開，我會把你加進既有那一列。\n• `看一下我還有哪些待辦`\n• `PM 有沒有回我？`\n• `新增待辦：庫存匯出缺少批號`"
       }
     },
@@ -60,6 +70,13 @@
       "text": {
         "type": "mrkdwn",
         "text": "*3. 把待辦整理成可以決策的草稿*\n我會讀那一列、PM 留言和相關程式碼，整理出現況、要改什麼、怎麼驗、哪些還沒定案。草稿以附件回到同一列的留言串，旁邊附兩個 GitHub 連結給你查重和開單 —— issue 是你點下去開的，我不會自己開。\n• 在待辦列留言：`@派大星教授加博士先生 偵察這列，準備 issue 草稿`\n• 一般對話：`分析這幾件待辦，整理到可以決定要不要開 issue`"
+      }
+    },
+    {
+      "type": "section",
+      "text": {
+        "type": "mrkdwn",
+        "text": "*裝了哪些工具*\n不用記名字，照範例那樣講就會用到：\n• `slack-list` 待辦表讀寫 —— 「我還有哪些待辦」「新增待辦：…」\n• `product-handoff` 交接草稿 —— 「把這列整理成可以交接的草稿」\n• `company-imagegen` 生圖 —— 「畫一張這個流程的圖」\n• `show-me` 圖解說明 —— 「用圖解釋這段流程怎麼跑」\n• `grilling` 反過來問你 —— 「需求還不清楚，先問我問題」"
       }
     },
     {

@@ -507,6 +507,16 @@ assert oc["instructions"] == ["/home/node/CLAUDE.md"], oc["instructions"]
 # `npm` field, and @ai-sdk/openai-compatible has no `responses` factory, so it
 # posts to {baseURL}/chat/completions and the gateway answers HTTP 405. That
 # shipped once. tests/provider-route.py derives the route; this pins the name.
+# The Home tells PMs which models answer them, so it carries model ids that also
+# live in this config. config is the source of truth; this keeps the copy honest
+# instead of letting the Home drift into a second, editable list.
+home = (root / "config/slack-home.json").read_text()
+for model_id in oc["provider"]["company"]["models"]:
+    assert f"company/{model_id}" in home, (
+        f"config/slack-home.json does not name company/{model_id}; the Home "
+        "describes the models to users and must match the provider config"
+    )
+
 assert oc["provider"]["company"]["npm"] == "@ai-sdk/openai", (
     "the company provider must use @ai-sdk/openai (Responses API); see "
     "docs/adr/0010-company-provider-uses-the-responses-api.md"
