@@ -10,6 +10,7 @@
   },
   "permission": {
     "edit": "deny",
+    "external_directory": "allow",
     "bash": {
       "*": "allow",
       "company-image *": "allow",

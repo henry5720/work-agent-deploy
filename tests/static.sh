@@ -483,6 +483,16 @@ assert oc["share"] == "disabled"
 assert oc["snapshot"] is False, "the project tree is read-only, snapshots would fail"
 assert oc["plugin"] == ["file:///usr/local/lib/node_modules/oh-my-opencode-slim"], oc["plugin"]
 assert oc["permission"]["edit"] == "deny", "the bot is read-only"
+
+# external_directory is the one permission that defaults to "ask", and OpenAB
+# only auto-answers the primary session's prompts -- a subagent's prompt hangs
+# the whole turn with no reply in Slack. Keeping it "allow" costs nothing: bash
+# is already "*": "allow", and the real boundary is the read-only mount.
+# See docs/adr/0011-subagent-permission-prompts-hang-the-turn.md.
+assert oc["permission"]["external_directory"] == "allow", (
+    "external_directory must be allow; ask hangs OMO subagents, see "
+    "docs/adr/0011-subagent-permission-prompts-hang-the-turn.md"
+)
 bash = oc["permission"]["bash"]
 for pattern in ("gh *", "git push*", "git commit*", "git checkout*", "codegraph init*"):
     assert bash.get(pattern) == "deny", f"bash permission for {pattern!r} is not deny"
