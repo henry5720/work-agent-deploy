@@ -7,7 +7,7 @@ Deployment host是實體 Linux host，Compose以維護者自己的帳號執行�
 並且host要有Git、SSH client、Python 3、curl、jq與cron。SELinux enforcing的host不需要額外設定，Compose的
 bind mount已經帶`:z`。
 
-**所有 compose 指令都走 `./scripts/compose.sh`。** 它會先載入 root `.env` 與
+**所有 compose 指令都走 `docker compose -f ./compose.yaml`。** 它會先載入 root `.env` 與
 `config/versions.env`，再把參數原樣交給 `docker compose`。直接打 `docker compose` 會因為
 `OPENAB_IMAGE` 未設定而中止 —— 這是刻意的，版本只有 `config/versions.env` 一份正本。
 
@@ -81,10 +81,10 @@ mkdir -p runtime/openab runtime/drafts
 ./tests/static.sh
 ./tests/parse-document.py  # parser unit；不宣稱實際測到 multiprocessing worker terminate timeout
 ./scripts/preflight.sh
-./scripts/compose.sh build --pull
-./scripts/compose.sh up -d
-./scripts/compose.sh ps
-./scripts/compose.sh logs --tail=100 backlog-agent
+docker compose -f ./compose.yaml build --pull
+docker compose -f ./compose.yaml up -d
+docker compose -f ./compose.yaml ps
+docker compose -f ./compose.yaml logs --tail=100 backlog-agent
 ```
 
 預設 runtime 是 OpenCode，模型走公司 gateway 的 API key，**不需要互動式登入**。OMO 可委派 Claude
@@ -108,7 +108,7 @@ WORK_HELPER_ISSUE_MODE=manual
 必須對得上公司 gateway 實際 expose 的名稱。第一次接上 gateway 時先確認：
 
 ```bash
-./scripts/compose.sh exec backlog-agent opencode models
+docker compose -f ./compose.yaml exec backlog-agent opencode models
 ```
 
 對不上就改 `config/opencode/opencode.json` 的 `provider.company.models` 與
@@ -121,7 +121,7 @@ Root `.env` 只給 Compose用（snapshot root與 uid）；`env/openab.env` 才�
 
 ### Cloudflare R2 filestore（nettop 手動前置）
 
-兩份 OpenAB runtime config 的 `[filestore]` 必須相同：bucket 是
+唯一 OpenAB runtime config 的 `[filestore]` 必須相同：bucket 是
 `work-agent-attachments`，endpoint 是
 `https://99de68928da234ebcf0c9370443ad7ee.r2.cloudflarestorage.com`，region 是 `auto`，
 prefix 是 `incoming/`，presigned URL TTL 是 3600 秒，單檔上限是 **50 MiB**。設定檔不含
@@ -197,9 +197,9 @@ PDF，必須另加並審核 OCR engine，不可把 RapidOCR 或其他 OCR model 
 在 **nettop** 完成 build 後，維護者必須逐字執行：
 
 ```bash
-./scripts/compose.sh build --pull
-./scripts/compose.sh run --rm --user node --entrypoint parse-document backlog-agent --help
-./scripts/compose.sh run --rm --user node --entrypoint sh backlog-agent -lc \
+docker compose -f ./compose.yaml build --pull
+docker compose -f ./compose.yaml run --rm --user node --entrypoint parse-document backlog-agent --help
+docker compose -f ./compose.yaml run --rm --user node --entrypoint sh backlog-agent -lc \
   'test "$DOCLING_ARTIFACTS_PATH" = /opt/docling-models &&
    test -d "$DOCLING_ARTIFACTS_PATH" &&
    test -r "$DOCLING_ARTIFACTS_PATH" && test -x "$DOCLING_ARTIFACTS_PATH" &&
@@ -213,7 +213,7 @@ release gate 的真實附件測試；掃描 PDF OCR 不在目前支援範圍。
 停止 local instance：
 
 ```bash
-./scripts/compose.sh down
+docker compose -f ./compose.yaml down
 ```
 
 ## 3. Deployment Host 首次部署
@@ -249,7 +249,7 @@ $EDITOR env/openab.env
 
 ./scripts/install-sync-cron.sh
 ./scripts/deploy.sh
-./scripts/compose.sh logs --tail=100 backlog-agent
+docker compose -f ./compose.yaml logs --tail=100 backlog-agent
 ```
 
 `install-sync-cron.sh` 會建立 snapshot root與 repo內的 `runtime/`、寫入**兩個**每小時的 crontab entry，並跑第一次同步：
@@ -271,9 +271,9 @@ cleanup 真的有排程。上傳失敗的 artifact 是刻意留在 drafts 的，
 ### 驗證安全邊界
 
 ```bash
-./scripts/compose.sh ps
+docker compose -f ./compose.yaml ps
 crontab -l | grep work-agent-snapshots
-./scripts/compose.sh exec backlog-agent sh -lc \
+docker compose -f ./compose.yaml exec backlog-agent sh -lc \
   'python3 --version >/dev/null &&
    git --version >/dev/null &&
    /home/node/code/work-helper/bin/slack-list --help >/dev/null &&
@@ -294,9 +294,9 @@ crontab -l | grep work-agent-snapshots
 生圖那條路徑要真的打一次公司 gateway 才算驗過（會產生一次計費呼叫）：
 
 ```bash
-./scripts/compose.sh exec backlog-agent \
+docker compose -f ./compose.yaml exec backlog-agent \
   company-image generate --prompt 'a plain grey square' --name smoke
-./scripts/compose.sh exec backlog-agent sh -lc \
+docker compose -f ./compose.yaml exec backlog-agent sh -lc \
   'head -c 8 "$(ls -t /home/node/drafts/*/smoke*.png | head -1)" | od -c | head -1'
 ```
 
@@ -312,7 +312,7 @@ package spec；`file://` URI 才能在 `network=none` 時載入 OMO/ACP wrapper�
 1.18.13 的 XDG state 也固定導向既有可寫的 `opencode-state` volume：
 
 ```bash
-./scripts/compose.sh exec backlog-agent sh -lc \
+docker compose -f ./compose.yaml exec backlog-agent sh -lc \
   'opencode --version &&
    npm ls -g --depth=0 oh-my-opencode-slim &&
    test -f /usr/local/lib/node_modules/oh-my-opencode-slim/package.json &&
@@ -363,49 +363,11 @@ auth（那在 `opencode-data`）。
 
 接著重做 local段落的 Slack測試，再確認未授權帳號的訊息不會被處理。
 
-### Claude Code ACP specialist 與 rollback
+### Claude Code ACP specialist
 
 OMO 的 `acpAgents.claude-code` 直接執行 Docker image 內固定版 `/usr/local/bin/claude-agent-acp`，
-不會在 runtime 下載 package。首次需要 Claude 時登入一次：
-
-Claude ACP 也保留完整 rollback，不需要改 code：
-
-```bash
-./scripts/compose.sh exec backlog-agent claude auth login
-```
-
-之後由 OMO 依任務 routing 決定是否委派。Claude login state 保存在既有 `claude-credentials` named volume。
-
-Slack 不需要特殊 prefix，也沒有 prefix 強制委派規則。OMO Slim v2.2.15 使用內建 autonomous routing，
-依任務自行決定是否透過 `@claude-code` ACP wrapper 委派 Claude Code；這是 LLM routing，非 deterministic，
-不保證每個複雜工作都會交給 Claude Code。orchestrator 不直接啟動 ACP；wrapper 失敗時要明確回報委派失敗，
-不靜默 fallback 到本地處理。
-
-Claude ACP 也保留 rollback，不需要改 code：
-
-```bash
-$EDITOR config/versions.env       # OPENAB_AGENT_RUNTIME=claude
-./tests/static.sh
-./scripts/deploy.sh
-```
-
-`deploy.sh` 會換成 `OPENAB_IMAGE_CLAUDE`、改掛 `config/openab.claude-acp.toml`，並驗
-`/usr/local/bin/claude-agent-acp` 存在、config 指向它。specialist 與 rollback 共用 `claude-credentials` named
-volume；Slack allowlist 不會因為 rollback 改變 ——
-兩份 config 的 `[slack]`、`[pool]`、`[reactions]` 由 `tests/static.sh` 比對逐字相同。
-
-**改 `config/openab.toml` 的 Slack 設定時要同步改 `config/openab.claude-acp.toml`**，否則
-static test 會擋下來。
-
-不預先 build 也能先確認 rollback 路徑是通的（不啟動任何東西）：
-
-```bash
-./scripts/compose.sh --runtime claude config --quiet
-```
-
-`--runtime` 只是不改檔案地 render 另一個 runtime，正式切換仍然要改 `config/versions.env`。
-**環境變數不能拿來覆蓋 runtime 或版本**：在指令前面塞 `OPENAB_AGENT_RUNTIME=...`（或任何一個
-`config/versions.env` 內的 key）會直接中止並要求改用這個 flag，理由是版本只有一份正本。
+不會在 runtime 下載 package。Claude 只作 OMO specialist，不存在另一個 OpenAB deployment runtime，也沒有 rollback 操作。
+登入 state 保存在 `claude-credentials` named volume；OpenAB config 永遠是 `config/openab.toml`。
 
 ### 人工 release gate
 
@@ -442,7 +404,7 @@ crontab -l | grep work-agent-artifact-cleanup
 
 ```bash
 for m in gpt-6-astra gpt-5.6-terra gpt-5.6-luna; do
-  ./scripts/compose.sh exec backlog-agent \
+  docker compose -f ./compose.yaml exec backlog-agent \
     opencode run --pure --model "company/$m" 'reply with the single word ok'
 done
 ```
@@ -479,8 +441,8 @@ git pull --ff-only
 查看 agent：
 
 ```bash
-./scripts/compose.sh ps
-./scripts/compose.sh logs -f --tail=200 backlog-agent
+docker compose -f ./compose.yaml ps
+docker compose -f ./compose.yaml logs -f --tail=200 backlog-agent
 ```
 
 查看或立即更新 snapshots：
@@ -511,10 +473,10 @@ host 端不要直接動 `runtime/drafts`。log 裡出現 `FAILED` 就是那一�
 停止 agent：
 
 ```bash
-./scripts/compose.sh down
+docker compose -f ./compose.yaml down
 ```
 
-不要執行 `./scripts/compose.sh down -v`，它會刪掉 `claude-credentials`（Claude login）與
+不要執行 `docker compose -f ./compose.yaml down -v`，它會刪掉 `claude-credentials`（Claude login）與
 `opencode-data`（OpenCode auth 與 session storage）。`opencode-config` 與 `opencode-cache`
 只有 OpenCode 自己生成的檔，刪掉會自己長回來。`runtime/` 不會被 `down` 刪除。
 
@@ -523,7 +485,7 @@ host 端不要直接動 `runtime/drafts`。log 裡出現 `FAILED` 就是那一�
 版本正本只有 `config/versions.env` 一份。升級 OpenAB 時：
 
 1. 取得新的 OpenAB multi-arch digest。
-2. 更新 `OPENAB_VERSION`、`OPENAB_IMAGE_OPENCODE`、`OPENAB_IMAGE_CLAUDE`。
+2. 更新 `OPENAB_VERSION`、`OPENAB_IMAGE`、`已移除的第二個 image`。
 3. 確認 Dockerfile 自包的 `opencode-ai` exact version，同步更新 `OPENCODE_VERSION` ——
    它會安裝到獨立的 `/opt/opencode-${OPENCODE_VERSION}` prefix，並在 build 時驗證
    `/usr/local/bin/opencode` 的 resolved path 與 exact version；對不上會失敗，這是刻意的。

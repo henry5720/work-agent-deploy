@@ -41,7 +41,7 @@ local 實作 agent
 
 只有一個 container，沒有獨立 broker 或 relay。Slack bot token 與公司 gateway key
 都在這個 container 內，由 OpenAB 依 `config/openab.toml` 的 `inherit_env` 傳給 agent process。
-這是明確接受的取捨：邊界靠 Slack allowlist、唯讀 mount 與 agent runtime 的 permission 設定，
+這是明確接受的取捨：邊界靠 Slack workspace 與 app 實際收到的事件、唯讀 mount 與 agent runtime 的 permission 設定，
 不靠 token 隔離。詳見 [`adr/0007-single-container-opencode-runtime.md`](adr/0007-single-container-opencode-runtime.md)。
 
 GitHub credential只到 deployment host 與 local 實作環境，不跨進 product-context bot container。詳見 [`adr/0001-github-access-stops-at-the-host-boundary.md`](adr/0001-github-access-stops-at-the-host-boundary.md)。
@@ -50,17 +50,16 @@ Deployment host就是實體host，Compose以維護者自己的帳號執行。第
 
 ## 互動入口
 
-第一版支援：
+第一版的 Slack 互動入口是：
 
-- 授權使用者與 Slack app 的 DM。
-- private channel `C0BPZRN6H3R`。
-- Bug/需求總表 item 留言所在的 backing channel `C0B9PSESQ2U`。
+- 同一個 Slack workspace 內使用者與 Slack app 的 DM。
+- Slack app 實際能收到事件的 channel，以及其中的 thread。
 
-只有 `config/openab.toml` 明列的 Slack user ID能驅動 agent。OpenAB `0.10.0-beta.3` 會把 channel allowlist也套到 DM channel ID，而 DM ID事前未知，因此 channel gate保持開放，實際 channel邊界由「只把 app 邀進上述兩個 channel」維持。新增 app所在 channel等於擴大互動入口，必須當成權限變更 review。
+`allow_all_users = true` 讓同一個 Slack workspace 內的使用者在 Slack 事件送達時都能驅動 agent，不再以固定 user ID allowlist 篩選。這不代表任何 workspace 或 channel 都一定可用：實際入口仍受 Slack app 能收到的 DM、channel 與 thread 事件範圍限制；新增 app 能收到事件的 channel 等於擴大互動入口，必須當成權限變更 review。
 
 **已知缺口**：實際部署的 bot token 帶有 `chat:write.public`、`channels:manage`、`groups:write.invites` 等遠多於 [`runbook.md`](runbook.md) 所列的 scope，其中 `chat:write.public` 讓 app 不必被邀請就能貼文到任何公開 channel，「靠邀請維持 channel 邊界」因此不成立。要讓這條邊界成立必須移除多餘 scope 並重新安裝 app（token 會換一組）。
 
-所有授權使用者的遠端能力相同。核准草稿不代表負責實作，也不會讓核准者取得 GitHub credential。
+所有能透過 Slack 事件驅動 agent 的 workspace 使用者遠端能力相同。核准草稿不代表負責實作，也不會讓核准者取得 GitHub credential。
 
 ## Repo Snapshots
 
@@ -150,7 +149,7 @@ PNG，固定寫到 `/home/node/drafts/<UTC 日期>/`。回應的兩種形狀都�
 build。理由與拒絕的替代方案見
 [`adr/0008-restricted-company-image-cli.md`](adr/0008-restricted-company-image-cli.md)。
 
-兩個 agent runtime 共用這一支 —— image 由同一份 `Dockerfile` 建置，兩份 OpenAB config 都把
+單一 agent runtime 共用這一支 —— image 由同一份 `Dockerfile` 建置，唯一 OpenAB config 都把
 `COMPANY_GATEWAY_*` 放進 `inherit_env`。所以「Claude ACP 是可用的 rollback」這句話在生圖上也成立，
 不是只在文件上成立。
 
@@ -218,29 +217,12 @@ Slack 不需要特殊 prefix，也沒有 prefix 強制委派規則。OMO Slim v2
 不保證每個複雜工作都會交給 Claude Code。orchestrator 不直接啟動 ACP；wrapper 失敗時明確回報委派失敗，
 不得靜默 fallback 到本地處理。
 
-Claude ACP 沒有被刪掉，是保留的 rollback。切換只改
-[`../config/versions.env`](../config/versions.env) 的 `OPENAB_AGENT_RUNTIME`：
+OpenAB 只有一個 deployment runtime：`config/openab.toml` 的 `opencode acp`。Claude ACP adapter 與 Claude Code CLI 仍由 Docker 以固定版本安裝，僅作 OMO specialist，不作 OpenAB rollback。
 
-| 值 | base image | OpenAB config |
-|---|---|---|
-| `opencode`（預設） | `OPENAB_IMAGE_OPENCODE` | `config/openab.toml` |
-| `claude` | `OPENAB_IMAGE_CLAUDE` | `config/openab.claude-acp.toml` |
+所有版本與 OpenAB immutable image digest 集中在 `config/versions.env`；`compose.yaml` 使用 checked-in build args，
+因此 `docker compose` 可直接 render。Dockerfile 會在 build 時驗證 base image 內的 OpenCode 版本等於 `OPENCODE_VERSION`。
 
-兩份 OpenAB config 的 `[slack]`、`[pool]`、`[reactions]` 必須逐字相同，`tests/static.sh` 會
-比對；只有 `[agent]` 允許不同，這樣 rollback 不會順手改掉誰能用這個 bot。
-
-所有版本（兩個 image 的 immutable digest、OpenCode、OMO、CodeGraph、Claude ACP adapter、Claude Code CLI）集中在
-`config/versions.env`，build 不得使用 `latest`、`beta` 或 `stable`。`docker compose` 一律經
-`scripts/compose.sh` 進入，直接呼叫會因缺變數中止。Dockerfile 會在 build 時驗證 base image
-內的 OpenCode 版本等於 `OPENCODE_VERSION`。
-
-「唯一正本」是可執行的，不是慣例：環境變數和 `config/versions.env` 不一致時 `load_versions`
-直接中止，不讓 ambient 值覆蓋 pin 或 runtime 選擇，否則 build 出來的 image 會和被 review 的檔案
-不同而且沒有任何地方會說。唯一支援的例外是 `./scripts/compose.sh --runtime <opencode|claude>`，
-它明確、只影響這一次 render，也不動檔案。
-
-`managed-claude-settings.json` 保留為 rollback runtime 的既有設定檔，唯讀掛載到
-`/home/node/.claude/settings.json`。Claude specialist 的委派設定則在 OMO 的 `acpAgents`。
+`managed-claude-settings.json` 是 specialist 使用的設定檔，唯讀掛載到 `/home/node/.claude/settings.json`。
 
 ## 執行與持久化
 
@@ -292,18 +274,18 @@ Claude ACP 沒有被刪掉，是保留的 rollback。切換只改
 
 ## 驗收情境
 
-1. 授權使用者能從 DM查 repo；未授權使用者的訊息被拒絕。
-2. 授權使用者能在指定 private channel @ agent，後續在同一 thread繼續對話。
-3. 授權使用者從DM或指定private channel明確建立待辦時，新列指派給sender並保存來源；同名active列不重複建立。
+1. Slack workspace 使用者能從 app 實際收到的 DM 查 repo；不在 Slack app 事件範圍內的訊息不會觸發 agent。
+2. Slack workspace 使用者能在 app 實際收到事件的 channel @ agent，後續在同一 thread 繼續對話。
+3. Slack workspace 使用者從可用 DM 或 channel 明確建立待辦時，新列指派給 sender 並保存來源；同名 active 列不重複建立。
 4. 在待辦列的 item 留言串 @ agent時，agent能反查正確 `Rec...`，不要求人再貼 ID。
 5. 偵察完成後，item 留言串收到 Markdown草稿與人工 GitHub連結，待辦狀態不變。
 6. Container內所有 snapshots不可寫，drafts可寫，且沒有可用的 GitHub auth或 SSH key。
 7. Host同步後，所有新 sessions讀到同一個基準 branch版本。
-8. `./scripts/deploy.sh` 在 `OPENAB_AGENT_RUNTIME=opencode` 下能驗到 container 內的
+8. `./scripts/deploy.sh` 在 `固定的 OpenCode runtime` 下能驗到 container 內的
    `opencode` 版本等於 `OPENCODE_VERSION`、OMO 版本等於 `OMO_VERSION`，且
    `/etc/openab/config.toml` 的 agent 是 `opencode acp`。
-9. 把 `OPENAB_AGENT_RUNTIME` 改成 `claude` 後，同一支 `deploy.sh` 改為驗
-   `claude-agent-acp` 存在且 config 指向它，Slack allowlist 不變。
+9. 把 `固定的 OpenCode runtime` 改成 `claude` 後，同一支 `deploy.sh` 改為驗
+   `claude-agent-acp` 存在且 config 指向它，Slack workspace user access 與事件範圍設定不變。
 10. 圖片附件能進到模型；PDF、DOCX、XLSX、PPTX 會經 `parse-document <url> <filename>` 轉成
     Markdown 後回答；ZIP 只列檔，video 明確回覆不支援。
 11. 一般請求得到 PNG；明確要求 prototype 時才得到單一檔案的 HTML；兩者都由受限 uploader 回原 thread。
@@ -311,7 +293,7 @@ Claude ACP 沒有被刪掉，是保留的 rollback。切換只改
     非法 size、走出 drafts 的檔名、允許範圍外的來源圖片都被拒絕且不發出 gateway 請求。
     這一項的靜態部分由 `tests/image-runtime.py` 用假 gateway 驗，真的 gateway 回得回圖要在
     有 key 的環境實跑一次。
-13. 把 `OPENAB_AGENT_RUNTIME` 改成 `claude` 後，同一支 `company-image` 仍在，
+13. 把 `固定的 OpenCode runtime` 改成 `claude` 後，同一支 `company-image` 仍在，
      `COMPANY_GATEWAY_*` 仍傳得到 agent process。
 14. `slack-thread-artifact` 只接受 drafts 下的 regular PNG、Markdown、HTML；成功依序取得 upload URL、上傳、
     complete 到 `<sender_context>` 的 channel/thread 後刪檔。失敗不刪檔，且 Claude rollback 同樣可執行。

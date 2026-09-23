@@ -24,12 +24,12 @@
 | 系統行為與能力邊界 | `docs/system-design.md` |
 | 所有版本與 agent runtime 選擇 | `config/versions.env` |
 | Container資源與 mount | `compose.yaml` |
-| Slack allowlist、session與預設 agent process | `config/openab.toml` |
-| Claude ACP specialist／rollback | `config/opencode/oh-my-opencode-slim.json` 的 `acpAgents`；兩者共用 `managed-claude-settings.json`；rollback 的 OpenAB config 是 `config/openab.claude-acp.toml`（`[slack]`／`[pool]`／`[reactions]` 必須與上面逐字相同） |
+| Slack 存取、session與預設 agent process | `config/openab.toml` |
+| Claude ACP specialist | `config/opencode/oh-my-opencode-slim.json` 的 `acpAgents`；共用 `managed-claude-settings.json` |
 | OpenCode provider、模型、permission | `config/opencode/opencode.json` |
 | OMO 模型分工 | `config/opencode/oh-my-opencode-slim.json` |
 | Claude ACP specialist | `config/opencode/oh-my-opencode-slim.json` 的 `acpAgents`；login state 在 `claude-credentials` volume |
-| 生圖／改圖能力邊界 | `agents/bin/company-image`（兩個 runtime 共用，改介面等於改能力） |
+| 生圖／改圖能力邊界 | `agents/bin/company-image`（單一 runtime 共用，改介面等於改能力） |
 | Snapshot remote與基準 branch | `config/repos.conf` |
 | Host 排程（snapshot 同步、artifact cleanup） | `scripts/lib.sh` 的 `render_crontab` |
 | PM 在 Slack Home 看到的能力說明 | `config/slack-home.json`（改 `repos.conf` 要一起看這份） |
@@ -48,18 +48,18 @@
 - `WORK_HELPER_ISSUE_MODE` 必須是 `manual`。遠端 agent不建立 GitHub issue，也不執行驗收回報。
 - GitHub SSH key只供 deployment host的 snapshot同步使用，不能進 Compose env或 volume。
 - OpenAB image必須固定 immutable digest，正本在 `config/versions.env`。升級時先確認新版本 Slack config與 multi-arch manifest，再同步更新 spec和驗證。
-- Build不得出現 `latest`、`beta`、`stable` 或任何浮動 tag。所有 compose 指令走 `scripts/compose.sh`。
-- `config/versions.env` 是唯一正本，環境變數不能覆蓋它。ambient 值和檔案不一致時 `load_versions` 直接中止；要不改檔案試另一個 runtime 只有 `./scripts/compose.sh --runtime <opencode|claude>` 這一條路。
+- Build不得出現 `latest`、`beta`、`stable` 或任何浮動 tag。Compose 可直接執行。
+- `config/versions.env` 記錄所有版本與 OpenAB immutable image digest；Compose 的 checked-in build args 必須同步更新。
 - 生圖／改圖只走 `company-image`。不要加 endpoint、header、model、輸出路徑這類參數，也不要在文件裡教 agent 直接 `curl` gateway。理由見 `docs/adr/0008-restricted-company-image-cli.md`。
 - 公司 gateway 只提供 Responses API。`config/opencode/opencode.json` 的 `provider.company.npm` 必須是 `@ai-sdk/openai`；換成 `@ai-sdk/openai-compatible` 會讓 OpenCode 打到 `{baseURL}/chat/completions`，gateway 回 HTTP 405，bot 整台問不動。`COMPANY_GATEWAY_BASE_URL` 是那個 gateway 提供 `/responses` 的前綴（不是 `/v1`），provider 與 `company-image` 共用同一個值、接同一個後綴。`tests/provider-route.py` 會擋，理由見 `docs/adr/0010-company-provider-uses-the-responses-api.md`。
-- Claude ACP adapter 與 Claude Code CLI 使用 `config/versions.env` 的固定版本，由 Docker build 安裝；OMO 不得改回 runtime `npx` download。Claude login state 使用既有 `claude-credentials` named volume。首次需要時登入一次，之後由 OMO 委派；`config/openab.claude-acp.toml` 保留作 rollback。
+- Claude ACP adapter 與 Claude Code CLI 使用固定版本，由 Docker build 安裝；OMO 不得改回 runtime `npx` download。Claude login state 使用既有 `claude-credentials` named volume。
 - Slack bot token 與公司 gateway key 共用同一個 container，這是已決定的取捨。不要在文件裡宣稱有 broker 或 token 隔離。
 - 「產物回原本那個 Slack thread」只能寫成單一 container 內 OpenAB `sender_context`、agent 與受限 CLI 之間的信任約定，**不是安全保證**。不要升級成 token isolation、cryptographic binding 或防 prompt injection 的說法，也不要改成 broker／relay。理由見 `docs/adr/0009-thread-artifact-upload-and-optional-stt.md`。
 - `agents/bin/` 兩支 CLI 的路徑處理不得回頭用 `resolve()` 或字串比對後再開檔。固定從 root 開 dirfd、逐段 `O_DIRECTORY|O_NOFOLLOW`；刪除用同一個 parent fd 並比對檔案 identity；寫入用 `O_CREAT|O_EXCL|O_NOFOLLOW` 加 temp→fsync→rename。`tests/artifact-path-safety.py` 會擋。
 - 上傳失敗的 artifact 由 host crontab 收，不是由文件收。`scripts/cleanup-artifacts.sh` 必須維持呼叫 container 內的 `/home/node/code/work-helper/bin/slack-list cleanup`，刪除規則的正本在 work-helper，部署層不要自己寫第二份。
 - `tests/static.sh` 與 `scripts/deploy.sh` 都不得聲稱驗過 Slack、公司 gateway、STT 或 cron 觸發。那些是 `docs/runbook.md`「人工 release gate」的項目。
-- Slack `allowed_users` 是權限設定。增刪 ID時要確認人的身分，不從顯示名稱猜。
-- `allow_all_channels = true` 是為了讓未知 ID的 DM可用；channel邊界依賴 app invitation。改這一項前先讀 `docs/system-design.md` 的「互動入口」。
+- `allow_all_users = true` 讓同一個 Slack workspace 的使用者可驅動 agent；實際入口仍受 Slack app 收到的 DM、channel、thread 事件範圍限制。
+- `allow_all_channels = true` 仍須維持；改這一項前先讀 `docs/system-design.md` 的「互動入口」。
 
 ## 修改規則
 
@@ -77,8 +77,7 @@ Local每次至少跑：
 ```bash
 ./tests/static.sh                       # 含 tests/image-runtime.py
 bash -n scripts/*.sh tests/*.sh
-./scripts/compose.sh config --quiet
-./scripts/compose.sh --runtime claude config --quiet
+docker compose config --quiet
 ```
 
 沒有 Docker 的機器上，`tests/static.sh` 會改用本機解析 `compose.yaml`，並在最後印出

@@ -5,7 +5,6 @@ ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 # shellcheck source=scripts/lib.sh
 source "$ROOT/scripts/lib.sh"
 load_env "$ROOT"
-load_versions "$ROOT"
 
 SNAPSHOT_ROOT=${SNAPSHOT_ROOT:-$HOME/work-agent-snapshots}
 HOST_UID=${HOST_UID:-1000}
@@ -23,9 +22,7 @@ fail() {
 [[ -f "$ENV_FILE" ]] || fail "missing $ENV_FILE (copy env/openab.env.example and fill secrets)"
 [[ $(stat -c '%a' "$ENV_FILE") =~ ^(600|640)$ ]] || fail "$ENV_FILE must have mode 600 or 640"
 
-# The gateway credentials are required by both runtimes: OpenCode's `company`
-# provider reads them for the model, and `company-image` reads them for image
-# generation, which the Claude ACP rollback also has.
+# The gateway credentials are required by OpenCode and company-image.
 required_keys=(
   SLACK_BOT_TOKEN SLACK_APP_TOKEN SLACK_LIST_ID WORK_HELPER_ISSUE_MODE
   COMPANY_GATEWAY_BASE_URL COMPANY_GATEWAY_API_KEY R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY
@@ -59,7 +56,7 @@ grep -Fq "PARSE_DOCUMENT_ALLOWED_HOST: $R2_ALLOWED_HOST" "$ROOT/compose.yaml" ||
   fail "compose.yaml must set PARSE_DOCUMENT_ALLOWED_HOST to $R2_ALLOWED_HOST"
 
 # STT 是選配，且不是公司 gateway 的延伸假設。兩個值要嘛都沒有、要嘛都填；真正啟用
-# 前還必須把兩份 OpenAB config 的 [stt].enabled 改成 true。
+# 前還必須把 OpenAB config 的 [stt].enabled 改成 true。
 stt_base=$(grep -E '^STT_BASE_URL=' "$ENV_FILE" || true)
 stt_key=$(grep -E '^STT_API_KEY=' "$ENV_FILE" || true)
 if [[ -n ${stt_base#STT_BASE_URL=} || -n ${stt_key#STT_API_KEY=} ]]; then
@@ -68,18 +65,12 @@ if [[ -n ${stt_base#STT_BASE_URL=} || -n ${stt_key#STT_API_KEY=} ]]; then
   [[ $stt_base == STT_BASE_URL=https://* ]] || fail "STT_BASE_URL must be an https URL"
 fi
 
-# The runtime the build will actually produce. load_versions already rejected an
-# unknown runtime, a floating image and a missing OpenAB config; these checks are
-# about the files that config points at.
-printf 'runtime: %s\nimage:   %s\nconfig:  %s\n' \
-  "$OPENAB_AGENT_RUNTIME" "$OPENAB_IMAGE" "$OPENAB_CONFIG"
-if [[ $OPENAB_AGENT_RUNTIME == opencode ]]; then
-  for f in opencode.json oh-my-opencode-slim.json; do
-    [[ -f "$ROOT/config/opencode/$f" ]] || fail "missing config/opencode/$f"
-    python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$ROOT/config/opencode/$f" ||
-      fail "config/opencode/$f is not valid JSON"
-  done
-fi
+printf 'runtime: opencode\nconfig:  %s\n' "$ROOT/config/openab.toml"
+for f in opencode.json oh-my-opencode-slim.json; do
+  [[ -f "$ROOT/config/opencode/$f" ]] || fail "missing config/opencode/$f"
+  python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$ROOT/config/opencode/$f" ||
+    fail "config/opencode/$f is not valid JSON"
+done
 
 # The container runs as HOST_UID:HOST_GID (see Dockerfile), so the writable
 # bind mounts must belong to that identity.
@@ -132,5 +123,5 @@ require_manual_release_gate() {
 
 require_manual_release_gate
 
-"$ROOT/scripts/compose.sh" config --quiet
+docker compose -f "$ROOT/compose.yaml" config --quiet
 printf 'Preflight passed.\n'

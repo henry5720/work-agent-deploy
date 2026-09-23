@@ -1,24 +1,23 @@
 name: work-agent
 
-# 版本與 runtime 的正本是 config/versions.env。一律用 ./scripts/compose.sh 進入，
-# 直接 `docker compose` 會因為 OPENAB_IMAGE 未設定而中止。
+# 這份檔案可直接由 `docker compose` 使用。image 與 build args 對應
+# config/versions.env 的 checked-in pins；不要改成 floating tag。
 services:
   backlog-agent:
     build:
       context: .
       dockerfile: Dockerfile
       args:
-        OPENAB_IMAGE: ${OPENAB_IMAGE:?run ./scripts/compose.sh, not docker compose}
-        OPENAB_AGENT_RUNTIME: ${OPENAB_AGENT_RUNTIME:?run ./scripts/compose.sh, not docker compose}
-        OPENCODE_VERSION: ${OPENCODE_VERSION:?run ./scripts/compose.sh, not docker compose}
-        OMO_VERSION: ${OMO_VERSION:?run ./scripts/compose.sh, not docker compose}
-        CODEGRAPH_VERSION: ${CODEGRAPH_VERSION:?run ./scripts/compose.sh, not docker compose}
-        CLAUDE_AGENT_ACP_VERSION: ${CLAUDE_AGENT_ACP_VERSION:?run ./scripts/compose.sh, not docker compose}
-        CLAUDE_CODE_VERSION: ${CLAUDE_CODE_VERSION:?run ./scripts/compose.sh, not docker compose}
-        DOCLING_VERSION: ${DOCLING_VERSION:?run ./scripts/compose.sh, not docker compose}
+        OPENAB_IMAGE: ghcr.io/openabdev/openab:0.10.0-beta.3-opencode@sha256:44abe31bc0cdb462e1177930590ce52c597e454ea817cd744b5f360875009561
+        OPENCODE_VERSION: 1.18.13
+        OMO_VERSION: 2.2.15
+        CODEGRAPH_VERSION: 1.5.0
+        CLAUDE_AGENT_ACP_VERSION: 0.70.0
+        CLAUDE_CODE_VERSION: 2.1.236
+        DOCLING_VERSION: 2.121.0
         HOST_UID: ${HOST_UID:-1000}
         HOST_GID: ${HOST_GID:-1000}
-    image: work-agent-openab:${OPENAB_VERSION}-${OPENAB_AGENT_RUNTIME}
+    image: work-agent-openab:0.10.0-opencode
     container_name: work-agent
     restart: unless-stopped
     env_file:
@@ -26,9 +25,9 @@ services:
         required: false
     environment:
       CLAUDE_CONFIG_DIR: /home/node/.claude
-      CLAUDE_AGENT_ACP_VERSION: ${CLAUDE_AGENT_ACP_VERSION:?run ./scripts/compose.sh, not docker compose}
+      CLAUDE_AGENT_ACP_VERSION: 0.70.0
       CLAUDE_AGENT_ACP_BIN: /usr/local/bin/claude-agent-acp
-      CLAUDE_CODE_VERSION: ${CLAUDE_CODE_VERSION:?run ./scripts/compose.sh, not docker compose}
+      CLAUDE_CODE_VERSION: 2.1.236
       CLAUDE_CODE_EXECUTABLE: /usr/local/bin/claude
       OPENCODE_CONFIG_DIR: /home/node/.config/opencode
       # OpenCode 1.18.13 writes XDG state under ~/.local/state by default; route
@@ -52,8 +51,8 @@ services:
       - /tmp:size=1g,mode=1777
     # `z` relabels bind mounts for SELinux hosts and is a no-op elsewhere.
     volumes:
-      # OpenAB config：opencode acp 是預設，config/openab.claude-acp.toml 是 rollback。
-      - ${OPENAB_CONFIG:?run ./scripts/compose.sh, not docker compose}:/etc/openab/config.toml:ro,z
+      # OpenAB 唯一 runtime config。
+      - ./config/openab.toml:/etc/openab/config.toml:ro,z
       # agent 規則只有 agents/CLAUDE.md 一份。Claude Code 直接讀這個路徑；
       # OpenCode 由 config/opencode/opencode.json 的 `instructions` 指過來。
       - ./agents/CLAUDE.md:/home/node/CLAUDE.md:ro,z

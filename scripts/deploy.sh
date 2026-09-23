@@ -5,9 +5,7 @@ ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 # shellcheck source=scripts/lib.sh
 source "$ROOT/scripts/lib.sh"
 load_env "$ROOT"
-load_versions "$ROOT"
-
-compose() { "$ROOT/scripts/compose.sh" "$@"; }
+compose() { docker compose -f "$ROOT/compose.yaml" "$@"; }
 
 "$ROOT/scripts/preflight.sh"
 compose build --pull
@@ -27,7 +25,7 @@ compose exec -T backlog-agent sh -lc 'test -d /home/node/.claude/skills/slack-li
 # read-only config, skills and snapshot mounts underneath it writable.
 compose exec -T backlog-agent sh -lc 'test ! -w /home/node'
 
-# 生圖路徑：兩個 runtime 共用同一支 CLI，所以這幾項不放在下面的 runtime 分支裡。
+# 生圖路徑：單一 runtime 共用同一支 CLI，所以這幾項不放在下面的 runtime 分支裡。
 # 只驗它在、可執行、不可寫，以及 container env 有 gateway 設定；agent process 拿不拿
 # 得到由 OpenAB config 的 inherit_env 決定，那由 tests/static.sh 比對。
 # 這裡不對 gateway 發任何請求。
@@ -54,7 +52,7 @@ compose exec -T backlog-agent sh -lc \
 
 # Runtime-specific checks. These read versions and paths inside the container;
 # no Slack or gateway call is made here.
-if [[ $OPENAB_AGENT_RUNTIME == opencode ]]; then
+if true; then
   compose exec -T backlog-agent sh -lc \
     "opencode --version | grep -qF '$OPENCODE_VERSION'"
   compose exec -T backlog-agent sh -lc \
@@ -83,8 +81,7 @@ if [[ $OPENAB_AGENT_RUNTIME == opencode ]]; then
     'grep -q "^command = \"opencode\"" /etc/openab/config.toml &&
      grep -q "^args = \[\"acp\"\]" /etc/openab/config.toml'
 else
-  compose exec -T backlog-agent sh -lc \
-    'grep -q "^command = \"/usr/local/bin/claude-agent-acp\"" /etc/openab/config.toml'
+  :
 fi
 
 compose ps

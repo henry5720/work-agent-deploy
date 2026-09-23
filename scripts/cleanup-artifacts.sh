@@ -16,7 +16,6 @@ ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 # shellcheck source=scripts/lib.sh
 source "$ROOT/scripts/lib.sh"
 load_env "$ROOT"
-load_versions "$ROOT"
 
 STATE_DIR=${XDG_STATE_HOME:-${HOME:?HOME must be set}/.local/state}/work-agent
 LOG=${CLEANUP_LOG:-$STATE_DIR/artifact-cleanup.log}
@@ -44,7 +43,7 @@ if ! flock -n 9; then
 fi
 
 status=0
-"$ROOT/scripts/compose.sh" exec -T backlog-agent "$CLEANUP_COMMAND" cleanup || status=$?
+docker compose -f "$ROOT/compose.yaml" exec -T backlog-agent "$CLEANUP_COMMAND" cleanup || status=$?
 if ((status != 0)); then
   # 記下來並回非零，讓 cron 也看得到。清不掉時 artifact 會繼續累積，這不是可以
   # 安靜吞掉的事。

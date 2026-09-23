@@ -68,8 +68,7 @@ _Avoid_: skill registry、registry allowlist、catalog 等於授權
  container 內實際接 ACP 的 CLI。預設 OpenAB process 是 OpenCode（`opencode acp`）搭 OMO plugin；
   不需要特殊 prefix；OMO Slim 另可依任務自行決定是否透過 `@claude-code` ACP wrapper 委派固定版本的 Claude Code ACP
   specialist。這是 LLM routing，非 deterministic；Claude 是可選 specialist，不是 bot 的必要執行層，
-  不可用時必須明確回報，不得靜默改走 OpenCode。Claude ACP rollback 仍可透過
-  `config/versions.env` 的 `OPENAB_AGENT_RUNTIME` 切換。首次需要時執行一次 `claude auth login`；
+  不可用時必須明確回報，不得靜默改走 OpenCode。首次需要時執行一次 `claude auth login`；
   OMO orchestrator 不直接啟動 ACP，wrapper 失敗時必須明確回報委派失敗，不得靜默 fallback。
 _Avoid_: Claude 作為預設執行層、runtime npx download
 

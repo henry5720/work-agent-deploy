@@ -11,8 +11,7 @@
   `COMPANY_GATEWAY_API_KEY`）讀，不寫在原始碼、不接受參數覆蓋。
 - 輸出一律是 PNG，一律落在 `/home/node/drafts/<UTC 日期>/`。
 
-兩個 agent runtime 共用這一支：image 由同一份 Dockerfile 建置，OpenCode 與
-Claude ACP rollback 都是用 bash 執行它，所以 rollback 不會少掉生圖路徑。
+OpenCode 使用這一支：image 由同一份 Dockerfile 建置，並以 bash 執行它。
 
 請求走公司 gateway 的 Responses API `image_generation` tool：`generate` 只送
 prompt，`edit` 另外把來源圖片以 data URL 當成 `input_image` 一起送。

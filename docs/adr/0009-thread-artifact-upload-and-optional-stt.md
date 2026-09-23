@@ -54,7 +54,7 @@ CLI 的檔案處理不用 `resolve()`：resolve 跟著 symlink 走，檢查過�
 先寫暫存檔再 fsync、rename。父目錄或檔案在檢查之後被換掉的結果是失敗，不是逃出 drafts。攻擊佈局
 由 `tests/artifact-path-safety.py` 重現。
 
-兩個 agent runtime 都允許同一支命令。Claude ACP rollback 因而包含真正的 artifact 回傳路徑。
+單一 agent runtime 允許同一支命令；Claude ACP 只作 OMO specialist。
 
 OpenAB 兩份 config 都放可選 `[stt]`：`STT_BASE_URL` / `STT_API_KEY` 供標準
 `/audio/transcriptions` 使用，預設 `enabled = false`。未確認相容 STT provider 前，audio 直接拒絕；不把

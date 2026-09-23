@@ -30,18 +30,9 @@ Container 沒有 GitHub token、SSH key、Docker socket或可寫的 repo checkou
 
 ## Agent runtime 與 Claude specialist
 
-預設 `opencode acp`；OMO 可依任務自行決定是否委派同一個 container 內、由 Docker image
-固定安裝的 Claude Code ACP specialist。Claude ACP 仍保留完整 rollback，切換只改
-[`config/versions.env`](config/versions.env) 的 `OPENAB_AGENT_RUNTIME`：
-
-| 值 | base image | OpenAB config |
-|---|---|---|
-| `opencode`（預設） | `OPENAB_IMAGE_OPENCODE` | `config/openab.toml` |
-| `claude` | `OPENAB_IMAGE_CLAUDE` | `config/openab.claude-acp.toml` |
-
-specialist 的 `acpAgents.claude-code` 執行固定版 `/usr/local/bin/claude-agent-acp`，不使用 runtime
-`npx` 下載。Claude login state 使用 `claude-credentials` named volume；首次需要時執行一次
-`./scripts/compose.sh exec backlog-agent claude auth login`。
+OpenAB 固定使用 `opencode acp`；OMO 可依任務自行決定是否委派同一個 container 內、由 Docker image
+固定安裝的 Claude Code ACP specialist。specialist 的 `acpAgents.claude-code` 執行固定版
+`/usr/local/bin/claude-agent-acp`，不使用 runtime `npx` 下載。
 
 不需要特殊 prefix。OMO Slim v2.2.15 使用內建 autonomous routing，依任務自行決定是否透過
 
@@ -50,12 +41,12 @@ specialist 的 `acpAgents.claude-code` 執行固定版 `/usr/local/bin/claude-ag
 fallback 到本地處理。
 
 
-所有 compose 指令走 `./scripts/compose.sh`；直接 `docker compose` 會中止，因為版本只有
-`config/versions.env` 一份正本。
+所有 compose 指令可直接使用 `docker compose`；image digest 與 build args 已寫在
+`compose.yaml`，並由 `config/versions.env` 記錄正本。
 
 ## Cloudflare R2 filestore
 
-兩份 OpenAB runtime config 都固定相同的 Cloudflare R2 filestore 設定：bucket
+OpenAB config 固定 Cloudflare R2 filestore 設定：bucket
 `work-agent-attachments`、region `auto`、prefix `incoming/`、presigned URL TTL 3600 秒，
 以及單檔上限 **50 MiB**。endpoint 是
 `https://99de68928da234ebcf0c9370443ad7ee.r2.cloudflarestorage.com`；只有 access key 與
@@ -102,27 +93,25 @@ agent 不得使用使用者文字提供的 URL、改寫 URL 或自行下載；`P
 - `CLAUDE.md`：給維護這個 deployment repo的 agent；不會 mount進 container。
 - `docs/system-design.md`：完整系統設計 spec、信任邊界、流程與驗收情境。
 - `.env.example`：snapshot root與 container使用者 uid/gid；複製成 root `.env`。
-- `config/versions.env`：所有版本的正本 —— 兩個 OpenAB image digest、runtime 選擇、OpenCode／OMO／CodeGraph、Claude ACP adapter、Claude Code CLI 與 Docling 版本。
+- `config/versions.env`：所有版本的正本 —— OpenAB image digest、OpenCode／OMO／CodeGraph、Claude ACP adapter、Claude Code CLI 與 Docling 版本。
 - `Dockerfile`：在固定 OpenAB image上加入 Python 3、git、Docling、CodeGraph、OMO、固定版 Claude ACP adapter 與 Claude Code CLI，build 時預取 `/opt/docling-models` 並驗證 node 可讀，再把 container使用者的 uid對齊 host。
 - `compose.yaml`：單一 OpenAB container，明確傳入 `DOCLING_ARTIFACTS_PATH=/opt/docling-models`。
-- `scripts/compose.sh`：所有 compose 指令的唯一入口，先載入 `.env` 與 `config/versions.env`。
 - `config/openab.toml`：Slack allowlist、session pool、Cloudflare R2 filestore，以及預設的
   `opencode acp` agent；R2 credentials 只用 `${R2_ACCESS_KEY_ID}`／`${R2_SECRET_ACCESS_KEY}`
   interpolation。
-- `config/openab.claude-acp.toml`：Claude ACP rollback；`[slack]` 等三節必須與上面逐字相同。
 - `config/opencode/opencode.json`：OpenCode 的 provider、模型、instructions、skills 路徑與 permission。
 - `config/opencode/oh-my-opencode-slim.json`：OMO preset（Terra synthesis／Luna retrieval）與 Claude Code ACP specialist。
-- `agents/bin/company-image`：生圖／改圖的唯一入口，裝進 image 的受限 CLI，兩個 runtime 共用。
-- `agents/bin/slack-thread-artifact`：把 drafts 的 PNG／Markdown／HTML 用 bot token 回原 Slack thread 的受限 CLI，兩個 runtime 共用。
+- `agents/bin/company-image`：生圖／改圖的唯一入口，裝進 image 的受限 CLI，單一 runtime 共用。
+- `agents/bin/slack-thread-artifact`：把 drafts 的 PNG／Markdown／HTML 用 bot token 回原 Slack thread 的受限 CLI，單一 runtime 共用。
 - `tests/image-runtime.py`：用假 gateway 驗 `company-image` 的請求 shape、PNG 輸出與拒絕不合法輸入。
 - `tests/slack-thread-artifact.py`：用假 Slack 驗 upload 三段流程的 header 與 body 編碼（兩個 Web API 呼叫送 form、bytes 那段不帶 token）、成功刪檔、失敗保留與拒絕不合法輸入。
 - `tests/parse-document.py`：mock Docling 驗證 PDF artifacts gate、Office 路徑、實際格式 gate 與 URL／ZIP／輸出上限；不會下載真實模型，也不宣稱實際測到 multiprocessing worker 的 terminate timeout。
 - `config/slack-home.json`：授權使用者看到的 Slack Home功能首頁。
 - `config/repos.conf`：snapshot 清單的正本，新增 repo只改這裡。
-- `agents/CLAUDE.md`：遠端 bot 的行為邊界；兩個 runtime 共用同一份。
+- `agents/CLAUDE.md`：遠端 bot 的行為邊界；單一 runtime 共用同一份。
 - `scripts/update-snapshots.sh`：host 端 clone/fetch/reset，並重建 CodeGraph 索引。
 - `scripts/preflight.sh`：部署前檢查 secrets、版本 pin、目錄擁有權與 snapshot 狀態。
-- `managed-claude-settings.json`：保留給 Claude rollback 使用的既有設定檔。
+- `managed-claude-settings.json`：Claude specialist 使用的既有設定檔。
 - `scripts/publish-slack-home.sh`：把 Home view發布給所有授權使用者。
 - `scripts/install-sync-cron.sh`：建立目錄並寫入兩個每小時的 crontab entry（snapshot 同步、artifact cleanup）。
 - `scripts/cleanup-artifacts.sh`：cron 呼叫的那一支，在 container 內執行 `slack-list cleanup` 收掉超過 24 小時的 artifact。
@@ -134,7 +123,7 @@ AI agent修改前從 [`CLAUDE.md`](CLAUDE.md) 的閱讀順序開始。要理解�
 ## Local 驗證與 Smoke Test
 
 ```bash
-./tests/static.sh          # 最後會跑兩支 runtime 的 mocked 測試
+./tests/static.sh
 ./tests/parse-document.py # parser unit；不測量 multiprocessing worker terminate timeout
 git diff --check
 ```

@@ -1,9 +1,7 @@
-# Base image 與所有版本的正本是 config/versions.env，經 scripts/compose.sh 帶進來。
-# 這裡故意不給 ARG 預設值：沒有走 compose.sh 就 build 不起來，避免出現第二份版本。
+# Base image 與所有版本的正本是 config/versions.env；Compose 直接傳入固定值。
 ARG OPENAB_IMAGE
 FROM ${OPENAB_IMAGE}
 
-ARG OPENAB_AGENT_RUNTIME
 ARG OPENCODE_VERSION
 ARG OMO_VERSION
 ARG CODEGRAPH_VERSION
@@ -37,7 +35,7 @@ RUN python3 -c 'from pathlib import Path; import os; p=Path("/opt/docling-models
 USER root
 RUN npm i -g "@colbymchenry/codegraph@${CODEGRAPH_VERSION}"
 # OMO 的 Claude Code specialist 直接執行這個已固定版本的 binary，不用 npx
-# 在 runtime 下載未審核的套件。Claude rollback 也共用同一份安裝。
+# 在 runtime 下載未審核的套件。
 RUN npm i -g "@agentclientprotocol/claude-agent-acp@${CLAUDE_AGENT_ACP_VERSION}"
 RUN npm i -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
 ENV CLAUDE_AGENT_ACP_VERSION=${CLAUDE_AGENT_ACP_VERSION} \
@@ -65,17 +63,13 @@ RUN set -eu; \
       *) echo "opencode resolved outside $OPENCODE_PREFIX" >&2; exit 1 ;; \
     esac; \
     test "$(opencode --version)" = "$OPENCODE_VERSION"
-RUN if [ "$OPENAB_AGENT_RUNTIME" = "opencode" ]; then \
-      npm i -g "oh-my-opencode-slim@${OMO_VERSION}"; \
-      OMO_DIR=/usr/local/lib/node_modules/oh-my-opencode-slim; \
-      test -f "$OMO_DIR/package.json"; \
-      test "$(node -p 'require(process.argv[1]).version' "$OMO_DIR/package.json")" = "$OMO_VERSION"; \
-      OMO_MAIN="$(node -p 'require(process.argv[1]).main || ""' "$OMO_DIR/package.json")"; \
-      test -n "$OMO_MAIN"; \
-      test -f "$OMO_DIR/$OMO_MAIN"; \
-      test -r "$OMO_DIR/$OMO_MAIN"; \
-      test "$(node -p 'require(process.argv[1]).main' "$OMO_DIR/package.json")" = "$OMO_MAIN"; \
-    fi
+RUN npm i -g "oh-my-opencode-slim@${OMO_VERSION}"; \
+    OMO_DIR=/usr/local/lib/node_modules/oh-my-opencode-slim; \
+    test -f "$OMO_DIR/package.json"; \
+    test "$(node -p 'require(process.argv[1]).version' "$OMO_DIR/package.json")" = "$OMO_VERSION"; \
+    OMO_MAIN="$(node -p 'require(process.argv[1]).main || ""' "$OMO_DIR/package.json")"; \
+    test -n "$OMO_MAIN"; test -f "$OMO_DIR/$OMO_MAIN"; test -r "$OMO_DIR/$OMO_MAIN"; \
+    test "$(node -p 'require(process.argv[1]).main' "$OMO_DIR/package.json")" = "$OMO_MAIN"
 RUN test -x "$CLAUDE_AGENT_ACP_BIN" \
     && test "$(command -v claude-agent-acp)" = "$CLAUDE_AGENT_ACP_BIN" \
     && npm ls -g --depth=0 "@agentclientprotocol/claude-agent-acp@${CLAUDE_AGENT_ACP_VERSION}" >/dev/null \

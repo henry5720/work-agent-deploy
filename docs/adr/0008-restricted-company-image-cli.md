@@ -14,10 +14,10 @@ Accepted（已決定）。Amends [0007](0007-single-container-opencode-runtime.m
 - `config/opencode/opencode.json` 的兩個模型都宣告 `output: ["text"]`，OpenCode 不會從它們拿到圖。
 - `oh-my-opencode-slim.json` 的 `image_routing: "direct"` 管的是「Slack 傳進來的附件送到哪個
   agent」，跟產圖無關。
-- Claude ACP rollback 的 `inherit_env` 連 `COMPANY_GATEWAY_*` 都沒有。
+- Claude specialist 與 OpenCode 都依唯一 config 的 `inherit_env` 取得必要的 gateway 設定。
 
 同時 `README.md`、`docs/system-design.md` 與 `agents/CLAUDE.md` 都寫著「圖片產物 PNG」「生圖走
-公司 gateway」。也就是說：文件宣告了一個沒有實作的能力，兩個 runtime 都是。
+公司 gateway」。也就是說：文件宣告了一個沒有實作的能力，單一 runtime 都是。
 
 補這個洞有兩條路。一條是不補 —— 讓 agent 自己用 `curl` 打 gateway，反正 bash 是 allow、key 也在
 env 裡。那等於把 endpoint、header、model、輸出路徑全部交給模型當次自由發揮，key 會出現在
@@ -48,9 +48,9 @@ env 裡。那等於把 endpoint、header、model、輸出路徑全部交給模�
   當成一張完整的圖而不是要接起來的 chunk，所以同一個 output 後到的取代先到的，帶 `result` 的收尾
   事件優先於 partial。錯誤只印截斷過的說明，不把整個 event（可能就是那張圖）倒進 stderr。
 - 輸出一律寫到 `/home/node/drafts/<UTC 日期>/<name>.png`，檔名衝突時加序號，不覆蓋。
-- 選 CLI 不選 MCP server：MCP 要在兩個 runtime 各設定一次、各自維護一份 server 定義，而這裡需要
-  的東西就是一個帶四個參數的呼叫。CLI 由 image 提供，兩個 runtime 不必各自設定就都拿得到。
-- 兩個 runtime 共用它：`config/openab.toml` 與 `config/openab.claude-acp.toml` 都把
+- 選 CLI 不選 MCP server：MCP 要在單一 runtime 各設定一次、各自維護一份 server 定義，而這裡需要
+  的東西就是一個帶四個參數的呼叫。CLI 由 image 提供，單一 runtime 不必各自設定就都拿得到。
+- 單一 runtime 共用它：`config/openab.toml` 把
   `COMPANY_GATEWAY_*` 放進 `inherit_env`，`config/opencode/opencode.json` 與
   `managed-claude-settings.json` 都明列允許執行它。
 - 把 PNG 送回 Slack thread 不在這個 ADR 裡。CLI 只負責產出檔案並印出路徑。
@@ -68,7 +68,7 @@ env 裡。那等於把 endpoint、header、model、輸出路徑全部交給模�
   不能在 Slack 當場繞過。這是刻意的。
 - key 仍然在同一個 container 裡，agent 仍然可以自己 `curl`。這支 CLI 不是沙箱，是把「正常路徑」
   做成一個窄入口，並且讓 `agents/CLAUDE.md` 有一個明確的東西可以指。0007 記的取捨沒有改變。
-- gateway credential 現在兩個 runtime 都需要，`scripts/preflight.sh` 因此不再只在 OpenCode
+- gateway credential 現在單一 runtime 都需要，`scripts/preflight.sh` 因此不再只在 OpenCode
   runtime 檢查它們。
 - CLI 只寫檔、只印路徑。上傳回 Slack thread 是另一條還沒收斂的路徑，在它收斂之前，
   `agents/CLAUDE.md` 要求 bot 照實說「檔案產好了」而不是「已經傳給你了」。

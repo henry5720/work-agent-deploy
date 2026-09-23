@@ -70,7 +70,7 @@ OpenCode 依 provider 設定的 `npm` 欄位決定要呼叫 SDK 的哪個 factor
 - 這張表現在只有兩個 adapter。要換成第三個（例如某天走 `@openrouter/...`）必須先補表，
   否則 `tests/provider-route.py` 會直接說它不認得這個 adapter 並失敗。這是刻意的：
   沒有人工確認過 route 的 adapter 不該悄悄上 production。
-- Claude ACP rollback 不受影響。那條路徑走 Claude 訂閱，`COMPANY_GATEWAY_*` 只給
+- Claude specialist 不改變這個路由；`COMPANY_GATEWAY_*` 只給
   `company-image` 用（見 [0008](0008-restricted-company-image-cli.md)）。
 
 ## Implementation update
