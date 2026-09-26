@@ -1,6 +1,6 @@
 # Work Agent Runbook
 
-Local與deployment host共用同一份 Compose及runtime設定。State與草稿都放在本 repo的 `runtime/`；
+Local與deployment host共用同一份 Compose及runtime設定。State與 artifact 暫存檔都放在本 repo的 `runtime/`；
 兩邊都要建立 root `.env`，指定 snapshot root與執行 docker的使用者 uid/gid。
 
 Deployment host是實體 Linux host，Compose以維護者自己的帳號執行，不需要sudo。該帳號必須在`docker` group裡，
@@ -276,7 +276,7 @@ crontab -l | grep work-agent-snapshots
 docker compose -f ./compose.yaml exec backlog-agent sh -lc \
   'python3 --version >/dev/null &&
    git --version >/dev/null &&
-   /home/node/code/work-helper/bin/slack-list --help >/dev/null &&
+   /home/node/code/agent-config/skills/slack-list/scripts/slack-list --help >/dev/null &&
    test -w /home/node/.openab &&
    test -w /home/node/drafts &&
    test ! -w /home/node/code/teamsync-frontend &&
@@ -288,7 +288,7 @@ docker compose -f ./compose.yaml exec backlog-agent sh -lc \
     command -v company-image >/dev/null &&
     command -v slack-thread-artifact >/dev/null &&
    test ! -w /usr/local/bin/company-image &&
-   codegraph explore boot -p /home/node/code/work-helper >/dev/null'
+   codegraph explore boot -p /home/node/code/agent-config >/dev/null'
 ```
 
 生圖那條路徑要真的打一次公司 gateway 才算驗過（會產生一次計費呼叫）：
@@ -462,7 +462,7 @@ tail -n 50 "${XDG_STATE_HOME:-$HOME/.local/state}/work-agent/artifact-cleanup.lo
 ```
 
 `cleanup-artifacts.sh` 自己不刪檔，它在 container 內執行
-`/home/node/code/work-helper/bin/slack-list cleanup`——刪除規則的正本在 work-helper，
+`/home/node/code/agent-config/skills/slack-list/scripts/slack-list cleanup`——刪除規則的正本在 agent-config，
 host 端不要直接動 `runtime/drafts`。log 裡出現 `FAILED` 就是那一輪沒清到（多半是 container
 沒在跑），artifact 會留到下一輪；持續 FAILED 要當成待處理，不是雜訊。
 
@@ -497,8 +497,9 @@ docker compose -f ./compose.yaml down
 
 ### 更新或新增 Skill
 
-`/home/node/.claude/skills` 是 `work-helper/.claude/skills` 整個目錄的 read-only mount。修改或新增 skill只要 commit並 push到
-`work-helper` 的 `main`，下一次同步（每小時）之後就會生效，**不需要改這個 repo，也不需要重新 build或 deploy**。
+`/home/node/.claude/skills` 是 `agent-config/skills` 整個目錄的 read-only mount。agent-config 是 skillshare
+管理的 public repo，修改或新增 skill只要 push到 `agent-config` 的 `main`，下一次同步（每小時）之後就會生效，
+**不需要改這個 repo，也不需要重新 build或 deploy**。skill 怎麼安裝、更新第三方來源，看 agent-config 自己的 README。
 
 要立即生效就在 host上執行 `./scripts/update-snapshots.sh`。
 
@@ -506,9 +507,11 @@ docker compose -f ./compose.yaml down
 OpenCode 由 `config/opencode/opencode.json` 的 `skills.paths` 指過去。**讀得到不等於能跑**，
 不該跑的 skill 寫在 `agents/CLAUDE.md`。
 
-第三方 skill在 work-helper用 `npx skills add <repo> -s <skill> -a claude-code --copy` 安裝，來源與 hash記在
-`work-helper/skills-lock.json`，更新用 `npx skills update -p`。**一定要 `--copy`**：預設的 symlink會指到
-mount範圍以外，在 container內是斷的。
+`slack-list` 設定只讀環境變數：container 從 `env/openab.env` 拿到，不需要 `~/.config/slack-list/.env`。
+
+從 work-helper 切過來的 host，snapshot root 裡還留著舊的 `work-helper` 目錄，`preflight.sh` 會因為它不在
+`config/repos.conf` 而失敗。確認新的 `agent-config` snapshot 同步成功後，刪掉 `$SNAPSHOT_ROOT/work-helper`
+與 `$SNAPSHOT_ROOT/.index/work-helper`。
 
 唯一需要改這個 repo的情況：新 skill在這個環境跑不動（需要 `gh`、`git worktree`、可寫 repo或 local 專用工具），
 或它的行為會撞到 Slack回覆規則。那要在 `agents/CLAUDE.md` 的「Skill 邊界」寫明，否則 agent會在 Slack上嘗試然後失敗。

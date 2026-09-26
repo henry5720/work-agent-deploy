@@ -25,7 +25,7 @@
         },
         {
           "type": "mrkdwn",
-          "text": "*能給什麼*\n• Slack 訊息回覆\n• PNG 圖\n• Markdown 檔\n• HTML prototype（要開口要，不然給 PNG）"
+          "text": "*能給什麼*\n• Slack 訊息回覆\n• PNG 圖\n• HTML prototype（要開口要，不然給 PNG）"
         }
       ]
     },
@@ -59,14 +59,7 @@
       "type": "section",
       "text": {
         "type": "mrkdwn",
-        "text": "*3. 把待辦整理成可以決策的草稿*\n我會讀那一列、PM 留言和相關程式碼，整理出現況、要改什麼、怎麼驗、哪些還沒定案。草稿以附件回到同一列的留言串，旁邊附兩個 GitHub 連結給你查重和開單 —— issue 是你點下去開的，我不會自己開。\n• 在待辦列留言：`@派大星教授加博士先生 偵察這列，準備 issue 草稿`\n• 一般對話：`分析這幾件待辦，整理到可以決定要不要開 issue`"
-      }
-    },
-    {
-      "type": "section",
-      "text": {
-        "type": "mrkdwn",
-        "text": "*裝了哪些工具*\n不用記名字，照範例那樣講就會用到：\n• `slack-list` 待辦表讀寫 —— 「我還有哪些待辦」「新增待辦：…」\n• `product-handoff` 交接草稿 —— 「把這列整理成可以交接的草稿」\n• `company-imagegen` 生圖 —— 「畫一張這個流程的圖」\n• `show-me` 圖解說明 —— 「用圖解釋這段流程怎麼跑」\n• `grilling` 反過來問你 —— 「需求還不清楚，先問我問題」"
+        "text": "*裝了哪些工具*\n不用記名字，照範例那樣講就會用到：\n• `slack-list` 待辦表讀寫 —— 「我還有哪些待辦」「新增待辦：…」\n• `company-imagegen` 生圖 —— 「畫一張這個流程的圖」\n• `show-me` 圖解說明 —— 「用圖解釋這段流程怎麼跑」\n• `grilling` 反過來問你 —— 「需求還不清楚，先問我問題」"
       }
     },
     {
@@ -76,7 +69,7 @@
       "type": "section",
       "text": {
         "type": "mrkdwn",
-        "text": "*從哪裡開始？*\n• *整張表*：<https://shuchenai-rdpm.slack.com/lists/${SLACK_TEAM_ID}/${SLACK_LIST_ID}|Bug/需求總表>（直接看、直接改，不用經過我）\n• *DM*：查自己的待辦、問程式碼、要檔案\n• *channel*：@ 我，後續留在同一個 thread\n• *待辦列的留言串*：最適合偵察，我知道是哪一列，不用再貼 `Rec...`"
+        "text": "*從哪裡開始？*\n• *整張表*：<https://shuchenai-rdpm.slack.com/lists/${SLACK_TEAM_ID}/${SLACK_LIST_ID}|Bug/需求總表>（直接看、直接改，不用經過我）\n• *DM*：查自己的待辦、問程式碼、要檔案\n• *channel*：@ 我，後續留在同一個 thread\n• *待辦列的留言串*：最適合問某一列的現況，我知道是哪一列，不用再貼 `Rec...`"
       }
     },
     {

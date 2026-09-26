@@ -1,6 +1,6 @@
 # work-agent-deploy
 
-這個 repo 部署 Slack 上的共享 product-context bot。它只做待辦查詢、repo偵察、草稿與 handoff 交付；產品實作和 GitHub issue發布留在 local。
+這個 repo 部署 Slack 上的共享 product-context bot。它只回答產品問題，並能查詢或建立指派給自己的 Slack 待辦；產品實作和 GitHub issue 留在 local。
 
 ## 先讀
 
@@ -34,7 +34,7 @@
 | Host 排程（snapshot 同步、artifact cleanup） | `scripts/lib.sh` 的 `render_crontab` |
 | PM 在 Slack Home 看到的能力說明 | `config/slack-home.json`（改 `repos.conf` 要一起看這份） |
 | Bot行為 | `agents/CLAUDE.md` |
-| Bot可用的 skill | `work-helper/.claude/skills`（不在這個 repo，部署層不裁這份 catalog） |
+| Bot可用的 skill | `agent-config/skills`（public repo，不在這個 repo，部署層不裁這份 catalog） |
 | Deployment host操作步驟 | `docs/runbook.md` |
 
 同一個值若必須出現在文件和設定，設定是機器正本；文件要連回設定，不要另造可獨立修改的清單。
@@ -56,7 +56,7 @@
 - Slack bot token 與公司 gateway key 共用同一個 container，這是已決定的取捨。不要在文件裡宣稱有 broker 或 token 隔離。
 - 「產物回原本那個 Slack thread」只能寫成單一 container 內 OpenAB `sender_context`、agent 與受限 CLI 之間的信任約定，**不是安全保證**。不要升級成 token isolation、cryptographic binding 或防 prompt injection 的說法，也不要改成 broker／relay。理由見 `docs/adr/0009-thread-artifact-upload-and-optional-stt.md`。
 - `agents/bin/` 兩支 CLI 的路徑處理不得回頭用 `resolve()` 或字串比對後再開檔。固定從 root 開 dirfd、逐段 `O_DIRECTORY|O_NOFOLLOW`；刪除用同一個 parent fd 並比對檔案 identity；寫入用 `O_CREAT|O_EXCL|O_NOFOLLOW` 加 temp→fsync→rename。`tests/artifact-path-safety.py` 會擋。
-- 上傳失敗的 artifact 由 host crontab 收，不是由文件收。`scripts/cleanup-artifacts.sh` 必須維持呼叫 container 內的 `/home/node/code/work-helper/bin/slack-list cleanup`，刪除規則的正本在 work-helper，部署層不要自己寫第二份。
+- 上傳失敗的 artifact 由 host crontab 收，不是由文件收。`scripts/cleanup-artifacts.sh` 必須維持呼叫 container 內的 `/home/node/code/agent-config/skills/slack-list/scripts/slack-list cleanup`，刪除規則的正本在 agent-config，部署層不要自己寫第二份。
 - `tests/static.sh` 與 `scripts/deploy.sh` 都不得聲稱驗過 Slack、公司 gateway、STT 或 cron 觸發。那些是 `docs/runbook.md`「人工 release gate」的項目。
 - `allow_all_users = true` 讓同一個 Slack workspace 的使用者可驅動 agent；實際入口仍受 Slack app 收到的 DM、channel、thread 事件範圍限制。
 - `allow_all_channels = true` 仍須維持；改這一項前先讀 `docs/system-design.md` 的「互動入口」。

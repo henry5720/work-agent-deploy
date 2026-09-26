@@ -13,7 +13,7 @@ compose up -d --remove-orphans
 
 compose exec -T backlog-agent python3 --version
 compose exec -T backlog-agent git --version
-compose exec -T backlog-agent /home/node/code/work-helper/bin/slack-list --help >/dev/null
+compose exec -T backlog-agent /home/node/code/agent-config/skills/slack-list/scripts/slack-list --help >/dev/null
 compose exec -T backlog-agent sh -lc 'test -w /home/node/.openab && test -w /home/node/drafts'
 compose exec -T backlog-agent sh -lc \
   'test -w /home/node/.claude &&

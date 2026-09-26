@@ -1,23 +1,17 @@
 # Work Agent Deployment
 
-這個 context 定義 product-context bot、handoff pack 與 Slack 互動資料的領域詞彙和關係。
+這個 context 定義 product-context bot 與 Slack 互動資料的領域詞彙和關係。
 
 ## Language
 
 **product-context bot**:
-在 Slack 提供唯讀產品脈絡與交接整理的 bot。它讀取 product context、回答問題並整理 handoff
-pack；它不是 remote executor，也不修改 repo 或代替人執行工作。
+在 Slack 回答產品問題的唯讀 bot。它讀取 product context 後回答；它不是 remote executor，
+也不修改 repo 或代替人執行工作。
 _Avoid_: backlog agent、execution agent、remote executor
 
 **product context**:
-描述產品現況、決策、限制與相關來源的共享脈絡。product-context bot 以它作為回答與 handoff
-pack 的共同依據。
+描述產品現況、決策、限制與相關來源的共享脈絡。product-context bot 以它作為回答的依據。
 _Avoid_: 個人工作筆記、可寫 checkout
-
-**handoff pack**:
-把產品脈絡與來源關係整理成可交接的內容單位。它由 product-context bot 產生，供人接續判斷
-或處理，不代表 bot 已完成實作。
-_Avoid_: remote execution、已套用的 patch、完成宣告
 
 **repo snapshot**:
 供 product-context bot 查閱的唯讀 repo 視圖。它是 product context 的工程來源之一，不是
@@ -53,13 +47,8 @@ prompt、允許清單內的 size 與來源圖片，沒有 endpoint、header、mo
 key 只從 runtime env 讀。兩個 agent runtime 共用同一支。
 _Avoid_: broker、upload helper、任意 gateway 呼叫
 
-**handoff output**:
-回覆包含目前 thread 的摘要，並可附上 Markdown handoff，讓人接續判斷或處理。這不代表 bot
-已完成實作。
-_Avoid_: 已套用的 patch、完成宣告
-
 **skill catalog**:
-`work-helper/.claude/skills` 整個目錄，以唯讀 mount 進 container。部署層不裁這份 catalog，
+public repo `agent-config` 的 `skills/` 整個目錄（由 skillshare 管理），以唯讀 mount 進 container。部署層不裁這份 catalog，
 所以「skill 在 container 內讀得到」不等於「這個環境可以跑它」。哪些 skill 不准跑寫在
 `agents/CLAUDE.md`，那是行為限制，不是 mount 或設定上的 allowlist。
 _Avoid_: skill registry、registry allowlist、catalog 等於授權
