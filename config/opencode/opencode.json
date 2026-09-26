@@ -11,6 +11,14 @@
   "permission": {
     "edit": "deny",
     "external_directory": "allow",
+    "skill": {
+      "*": "deny",
+      "slack-list": "allow",
+      "company-imagegen": "allow",
+      "show-me": "allow",
+      "grilling": "allow",
+      "caveman": "allow"
+    },
     "bash": {
       "*": "allow",
       "company-image *": "allow",
