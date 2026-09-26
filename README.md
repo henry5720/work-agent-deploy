@@ -1,6 +1,6 @@
 # work-agent-deploy
 
-在一台 Linux deployment host 上部署共享的 Slack product-context bot。OpenAB 接 Slack Socket Mode，agent 只讀定期更新的 repo snapshot，能讀寫 Slack 待辦、偵察 repo 並交付 issue 草稿與 handoff；不能改 code、建立 GitHub issue 或 push。
+在一台 Linux deployment host 上部署共享的 Slack product-context bot。OpenAB 接 Slack Socket Mode，agent 只讀定期更新的 repo snapshot，只回答產品問題，並能查詢或建立指派給自己的 Slack 待辦；不能改 code、建立 GitHub issue 或 push。
 
 ## 架構
 
@@ -10,13 +10,13 @@ Slack
     -> opencode acp + oh-my-opencode-slim (最多 10 個 session，閒置 4 小時回收)
       -> 公司 OpenAI-compatible gateway (模型)
        -> company-image -> 公司 gateway 的 Responses image_generation (生圖，輸出 PNG 到 drafts)
-       -> slack-thread-artifact -> 原 Slack thread（PNG／Markdown／HTML）
+       -> slack-thread-artifact -> 原 Slack thread（PNG／HTML）
        -> /home/node/code/* (read-only snapshots，單一 mount)
        -> /home/node/code/.index (CodeGraph 索引，唯一可寫的 repo 相關路徑)
-       -> /home/node/drafts (草稿，可寫)
+       -> /home/node/drafts (artifact 暫存，可寫)
        -> Cloudflare R2 filestore (incoming attachments)
        -> parse-document -> Markdown（PDF／DOCX／XLSX／PPTX；ZIP 只列檔）
-       -> /home/node/.claude/skills (work-helper/.claude/skills 的 read-only mount)
+       -> /home/node/.claude/skills (agent-config/skills 的 read-only mount)
 
 deployment host
   -> crontab 每小時 fetch/reset snapshots，再用 runtime image 重建索引
@@ -83,7 +83,7 @@ agent 不得使用使用者文字提供的 URL、改寫 URL 或自行下載；`P
 | 方向 | 支援 | 不支援 |
 |---|---|---|
 | 輸入 | text、image、PDF、DOCX、XLSX、PPTX | audio、video；ZIP 僅列檔、不解析內容 |
-| 輸出 | PNG、Markdown、明確要求時的 self-contained HTML | patch、repo ZIP |
+| 輸出 | Slack 訊息、PNG、明確要求時的 self-contained HTML | Markdown 附件、patch、repo ZIP |
 
 產物一律回原本的 Slack thread。
 

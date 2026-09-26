@@ -21,8 +21,8 @@ STATE_DIR=${XDG_STATE_HOME:-${HOME:?HOME must be set}/.local/state}/work-agent
 LOG=${CLEANUP_LOG:-$STATE_DIR/artifact-cleanup.log}
 LOG_MAX_BYTES=${CLEANUP_LOG_MAX_BYTES:-1048576}
 LOCK=${CLEANUP_LOCK:-$STATE_DIR/artifact-cleanup.lock}
-# Container 內的路徑，正本是 work-helper 的 bin/。這裡不重寫清理規則。
-CLEANUP_COMMAND=/home/node/code/work-helper/bin/slack-list
+# Container 內的路徑，正本是 agent-config 的 skills/slack-list/scripts/。這裡不重寫清理規則。
+CLEANUP_COMMAND=/home/node/code/agent-config/skills/slack-list/scripts/slack-list
 
 mkdir -p "$STATE_DIR"
 

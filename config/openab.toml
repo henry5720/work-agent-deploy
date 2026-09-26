@@ -28,6 +28,7 @@ inherit_env = [
   "SLACK_BOT_TOKEN",
   "SLACK_LIST_ID",
   "SLACK_TEAM_ID",
+  "SLACK_WORKSPACE_URL",
   "WORK_HELPER_ISSUE_MODE",
 ]
 

@@ -2,20 +2,20 @@
 
 ## 目標
 
-在 Slack 提供一個多人共用的唯讀 product-context bot，讓授權使用者能直接建立指派給自己的待辦、查待辦、讀 repo、偵察既有待辦列並取得可 review 的 issue 草稿與 handoff，不必經由另一個人轉述。
+在 Slack 提供一個多人共用的唯讀 product-context bot，讓授權使用者能直接問產品問題、查待辦、建立指派給自己的待辦，不必經由另一個人轉述。
 
-這個 bot 停在 product context 與 handoff 層。它不修改產品 code、不建立 GitHub issue、不 push，也不通知 PM 驗收。
+這個 bot 只回答產品問題。它不修改產品 code、不建立 GitHub issue、不 push，也不通知 PM 驗收。
 
 ## 角色
 
 | 角色 | 能做什麼 | 不能做什麼 |
 |---|---|---|
-| 授權使用者 | 從 Slack 發問、要求偵察、核准或退回草稿 | 透過遠端 bot 修改 code或取得 GitHub credential |
-| product-context bot | 建立 self-assigned Slack 待辦、讀待辦與 repo snapshot、交付草稿與 handoff | 實作、建立 issue、查 private issues、回報驗收 |
+| 授權使用者 | 從 Slack 發問、查詢或建立自己的待辦 | 透過遠端 bot 修改 code或取得 GitHub credential |
+| product-context bot | 建立 self-assigned Slack 待辦、讀待辦與 repo snapshot、回答產品問題 | 實作、建立 issue、查 private issues、回報驗收 |
 | snapshot 同步者 | 在 deployment host 從 GitHub 更新 snapshots | 進入 container或代表 agent發布內容 |
-| 實作 agent | 在 local 建 issue、修改 code、測試、push、回報驗收 | 假裝遠端草稿已核准或已實作 |
+| 實作 agent | 在 local 建 issue、修改 code、測試、push、回報驗收 | 假裝遠端 bot 的回答等於已實作 |
 
-Slack 待辦角色如回報對象、核准者、負責人，沿用 `work-helper/CONTEXT.md` 的定義。
+Slack 待辦的回報對象、指派對象，沿用 agent-config `skills/slack-list/SKILL.md` 的定義。
 
 ## 系統邊界
 
@@ -59,7 +59,7 @@ Deployment host就是實體host，Compose以維護者自己的帳號執行。第
 
 **已知缺口**：實際部署的 bot token 帶有 `chat:write.public`、`channels:manage`、`groups:write.invites` 等遠多於 [`runbook.md`](runbook.md) 所列的 scope，其中 `chat:write.public` 讓 app 不必被邀請就能貼文到任何公開 channel，「靠邀請維持 channel 邊界」因此不成立。要讓這條邊界成立必須移除多餘 scope 並重新安裝 app（token 會換一組）。
 
-所有能透過 Slack 事件驅動 agent 的 workspace 使用者遠端能力相同。核准草稿不代表負責實作，也不會讓核准者取得 GitHub credential。
+所有能透過 Slack 事件驅動 agent 的 workspace 使用者遠端能力相同，也都拿不到 GitHub credential。
 
 ## Repo Snapshots
 
@@ -67,11 +67,11 @@ Deployment host就是實體host，Compose以維護者自己的帳號執行。第
 
 Host每小時 fetch所有 remote refs，再把每個 working snapshot reset到基準 branch。所有 OpenAB sessions共用同一份內容。
 
-Snapshot代表最近一次同步成功的狀態，不保證和 GitHub當下完全同步。偵察結論若依賴剛 push的 commit，必須先確認 snapshot同步完成。
+Snapshot代表最近一次同步成功的狀態，不保證和 GitHub當下完全同步。回答若依賴剛 push的 commit，必須先確認 snapshot同步完成。
 
 product-context bot查符號與影響範圍時用CodeGraph索引，找字串才用grep。索引內容對應snapshot當下的基準branch。
 
-Working tree停在基準 branch，但 `.git`內保有完整的 `origin/*` refs。product-context bot可以用 `git show origin/<branch>:<path>` 這類唯讀方式讀還沒合併的 branch，不能 checkout；引用時必須標明 branch與 commit。
+Working tree停在基準 branch，但 `.git`內保有完整的 `origin/*` refs。product-context bot可以用 `git show origin/<branch>:<path>` 這類唯讀方式讀還沒合併的 branch，不能 checkout；回覆引用時必須標明 branch與 commit。
 
 ## 待辦流程
 
@@ -80,37 +80,29 @@ Working tree停在基準 branch，但 `.git`內保有完整的 `origin/*` refs�
 1. OpenAB把 sender、`channel_id` 與 `thread_ts` 放進 prompt 的 `<sender_context>`；它不是 ACP side-channel。
 2. product-context bot用 `slack-list context` 反查唯一的待辦列。
 3. agent讀待辦列、完整 item 留言串與相關 repo snapshots。
-4. agent依該 snapshot 自己的 issue 規範寫 issue body草稿（含改動檔案、驗過的 code 錨點、驗證方式）。
-5. agent用 `slack-list draft` 把 Markdown附件、來源指紋搜尋頁與 New issue頁放回同一個 item 留言串。
-6. 核准者決定建立任務、直接派工或退回修改。
+4. agent在同一個 item 留言串回答，不改待辦狀態。
 
 ### 從 DM 或一般 channel 開始
 
-口述需求不能直接變成草稿。product-context bot先找對應的既有待辦列；找不到而使用者明確要求建立時，
+product-context bot先找對應的既有待辦列；找不到而使用者明確要求建立時，
 用`openab.sender.v1`的sender、channel與thread context建立一筆指派給sender的待辦列。標題由agent濃縮時先確認，
 使用者明確提供標題時可直接建立；同名active列存在時加入既有assignees，不建立第二列。
 
 `slack-list add`只由這個OpenAB instance執行，local implementation agent不執行，讓同一runtime的process lock
 序列化查重與寫入。建立後的來源與回報設定留在原生item留言串；來源註記失敗時保留已建立的列並明確回報，
-不直接重試。待辦列存在後才能進入偵察與草稿流程，確保每份草稿都有Slack來源指紋與回報規則。
+不直接重試。
 
 ### 「我的待辦」
 
 這是多人共用的 agent，不能用固定的個人 ID判斷「我」。必須把當次
 `openab.sender.v1.sender_id` 傳給 `slack-list assigned`，精確比對待辦列的 assignee user ID。
 
-## 草稿邊界
-
-草稿交付不是 issue發布，也不是 GitHub查重完成。遠端環境只能提供 GitHub搜尋頁供核准者人工確認；不能聲稱 private issue不存在。
-
-草稿是消耗品。核准者看完後應選擇建立任務、當天直接派工或退回修改，不把 drafts目錄養成第二套 backlog。
-
 ## 輸入與輸出邊界
 
 Slack v1 的 native 輸入是 text、image、audio；PDF、DOCX、XLSX、PPTX 另外走 OpenAB 的 R2
 文件流程，ZIP 只安全列檔，video 仍直接說明不支援。
 
-輸出限於三種：Slack 訊息本文、PNG 圖片產物、Markdown（handoff 或 issue 草稿附件）。
+輸出限於 Slack 訊息本文與 PNG 圖片產物。
 self-contained HTML 只有在使用者明確要求 prototype 或可互動頁面時才輸出，而且必須是單一檔案。
 所有產物回到發問的那個 Slack thread；`slack-thread-artifact` 成功上傳才刪暫存，失敗保留交 host cleanup。
 「回原 thread」是同一個 container 內的信任約定，不是安全保證，細節見下面「『回原 thread』靠的是什麼」。
@@ -186,7 +178,7 @@ CLI 的價值只在縮小可造成的副作用：拿掉任意 URL、header、命
 [`adr/0009-thread-artifact-upload-and-optional-stt.md`](adr/0009-thread-artifact-upload-and-optional-stt.md)
 與 [`adr/0007-single-container-opencode-runtime.md`](adr/0007-single-container-opencode-runtime.md)。
 
-上傳失敗時草稿保留，由 deployment host 的 `# work-agent-artifact-cleanup` crontab entry
+上傳失敗時 artifact 暫存檔保留，由 deployment host 的 `# work-agent-artifact-cleanup` crontab entry
 （`scripts/cleanup-artifacts.sh` → container 內 `slack-list cleanup`，每小時 :17）收掉；保留期限
 24 小時，檢查每小時一次，所以實際壽命是 24 到 25 小時。
 
@@ -196,7 +188,7 @@ OpenAB config 的 `[stt].enabled` 改成 `true` 時才可轉錄。OpenAB 固定�
 
 ## 對話回覆
 
-一般 Slack 對話先回答產品結論、使用者目前會遇到什麼，以及期望改成什麼。除非授權使用者明確追問，否則不在對話回覆附檔名、行號、函式名、state、payload 或 API；這些工程細節留在 issue 草稿。
+一般 Slack 對話先回答產品結論、使用者目前會遇到什麼，以及期望改成什麼。除非授權使用者明確追問，否則不在對話回覆附檔名、行號、函式名、state、payload 或 API。
 
 Runtime或部署故障造成工具不能執行時，product-context bot只告知哪項查詢暫時不可用，並指出需要部署維護者修復，不要求 Slack 使用者執行 container排障或安裝套件。
 
@@ -243,12 +235,11 @@ OpenAB 只有一個 deployment runtime：`config/openab.toml` 的 `opencode acp`
   `runtime/openab`）是不同程式的不同目錄，只差一個字，讀 compose 時不要看混。
 - Container使用者的 uid/gid由 `HOST_UID`／`HOST_GID` build arg設定，必須等於執行 docker的 host使用者，可寫 bind mount才成立。
 - Bind mount帶 `:z`，SELinux enforcing的 host才讀得到；`z` 會 relabel來源目錄，所以 snapshot root是專用目錄。
-- Skills由 `work-helper/.claude/skills` 整個目錄掛成 `/home/node/.claude/skills`。Claude runtime
-  當它是 personal level skill；OpenCode 由 `config/opencode/opencode.json` 的 `skills.paths`
-  指過去。部署層不裁這份 catalog，跑不動的 skill 由 `agents/CLAUDE.md` 用文字擋。work-helper
-  `main` 上的新 skill會在下次同步後自動生效，不需要改這個 repo。第三方 skill由
-  `work-helper/skills-lock.json` 記錄來源與 hash。
-- OpenAB state與草稿存在 deployment repo的 Git-ignored `runtime/`，不隨 container重建刪除。
+- Skills由 public repo `agent-config` 的 `skills/` 整個目錄掛成 `/home/node/.claude/skills`。
+  Claude runtime 當它是 personal level skill；OpenCode 由 `config/opencode/opencode.json` 的
+  `skills.paths` 指過去。部署層不裁這份 catalog，跑不動的 skill 由 `agents/CLAUDE.md` 用文字擋。
+  agent-config 由 skillshare 管理，`main` 上的新 skill會在下次同步後自動生效，不需要改這個 repo。
+- OpenAB state與 artifact 暫存檔存在 deployment repo的 Git-ignored `runtime/`，不隨 container重建刪除。
 - Project資料中可寫的只有 `/home/node/drafts` 與 `/home/node/code/.index`；repo源碼全部唯讀。
 - 每個 snapshot 的 `.codegraph` 是指向 `.index/<repo>` 的相對 symlink。CodeGraph索引是WAL模式的SQLite，必須可寫；把它移出唯讀樹讓源碼的唯讀保證維持不變。索引由host每小時用runtime image重建，agent只能查詢。
 - OpenAB image使用固定 multi-arch digest，不跟浮動 tag更新。
@@ -265,10 +256,10 @@ OpenAB 只有一個 deployment runtime：`config/openab.toml` 的 `opencode acp`
 - 不建獨立 broker 或 relay，也不追求 Slack token 隔離。
 - 不支援 video，也不解壓或解析 ZIP 內容；PDF、DOCX、XLSX、PPTX 只走 OpenAB 提供的 R2 URL
   與固定的 `parse-document` 流程。
-- 不在部署層裁 `work-helper` 的 skill catalog。
+- 不在部署層裁 `agent-config` 的 skill catalog。
 - 不讓 product-context bot clone、fetch、建立 branch/worktree、commit或 push。
 - 不讓 product-context bot執行 `slack-list ready` 或宣告驗收。
-- 不自動把草稿發布成 GitHub issue。
+- 不產出 issue 草稿或交接文件（2026-09-26 移除），也不發布 GitHub issue。
 - 不為每位授權使用者部署獨立 agent instance。
 - 第一版不支援 Slack slash commands或 Slack AI assistant mode。
 
@@ -278,7 +269,7 @@ OpenAB 只有一個 deployment runtime：`config/openab.toml` 的 `opencode acp`
 2. Slack workspace 使用者能在 app 實際收到事件的 channel @ agent，後續在同一 thread 繼續對話。
 3. Slack workspace 使用者從可用 DM 或 channel 明確建立待辦時，新列指派給 sender 並保存來源；同名 active 列不重複建立。
 4. 在待辦列的 item 留言串 @ agent時，agent能反查正確 `Rec...`，不要求人再貼 ID。
-5. 偵察完成後，item 留言串收到 Markdown草稿與人工 GitHub連結，待辦狀態不變。
+5. 在待辦列 item 留言串詢問該列現況時，agent 在同一串用 Slack 訊息回答，待辦狀態不變。
 6. Container內所有 snapshots不可寫，drafts可寫，且沒有可用的 GitHub auth或 SSH key。
 7. Host同步後，所有新 sessions讀到同一個基準 branch版本。
 8. `./scripts/deploy.sh` 在 `固定的 OpenCode runtime` 下能驗到 container 內的
@@ -304,7 +295,7 @@ OpenAB 只有一個 deployment runtime：`config/openab.toml` 的 `opencode acp`
 16. 兩支 CLI 都走不出固定 root：父目錄被換成 symlink、檔名本身是 symlink、路徑用 `..` 逃逸，
     都被拒絕且不發出任何 Slack 或 gateway 請求。`company-image` 的目標檔名被事先種成
     指向外面的 symlink 時，寫到下一個可用檔名，不寫穿它。由 `tests/artifact-path-safety.py` 重現。
-17. 上傳成功後草稿被刪；但草稿在讀取之後被換成別的檔案或 symlink 時，**不刪**那個東西，
+17. 上傳成功後暫存檔被刪；但暫存檔在讀取之後被換成別的檔案或 symlink 時，**不刪**那個東西，
     在 stderr 說明並仍 exit 0（檔案確實送出去了，回非零只會讓 agent 重傳）。
 18. Deployment host 的 crontab 有 `# work-agent-artifact-cleanup` entry，每小時執行
     `scripts/cleanup-artifacts.sh`，它在 container 內跑 `slack-list cleanup`；container 沒在跑時

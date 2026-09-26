@@ -5,6 +5,7 @@
 Accepted（已決定）。Supersedes [0005](0005-separate-backlog-and-execution-agents.md)。
 Amended by [0007](0007-single-container-opencode-runtime.md)：image-artifact broker 不做，
 runtime secret 共用單一 container，版本改由 `config/versions.env` 集中固定。
+Amended（2026-09-26）：handoff／issue 草稿已移除，bot 只回答產品問題。
 
 ## Background
 

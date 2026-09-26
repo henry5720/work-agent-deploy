@@ -24,7 +24,7 @@ fail() {
 
 # The gateway credentials are required by OpenCode and company-image.
 required_keys=(
-  SLACK_BOT_TOKEN SLACK_APP_TOKEN SLACK_LIST_ID WORK_HELPER_ISSUE_MODE
+  SLACK_BOT_TOKEN SLACK_APP_TOKEN SLACK_LIST_ID SLACK_TEAM_ID SLACK_WORKSPACE_URL WORK_HELPER_ISSUE_MODE
   COMPANY_GATEWAY_BASE_URL COMPANY_GATEWAY_API_KEY R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY
 )
 for key in "${required_keys[@]}"; do
@@ -81,7 +81,7 @@ done
 # The whole snapshot root is mounted at /home/node/code, so nothing but the configured
 # snapshots may live in it.
 [[ -d "$SNAPSHOT_ROOT" ]] || fail "snapshot root missing: $SNAPSHOT_ROOT (run scripts/install-sync-cron.sh)"
-[[ -d "$SNAPSHOT_ROOT/work-helper/.claude/skills" ]] || fail "missing $SNAPSHOT_ROOT/work-helper/.claude/skills (skills are mounted from there)"
+[[ -d "$SNAPSHOT_ROOT/agent-config/skills" ]] || fail "missing $SNAPSHOT_ROOT/agent-config/skills (skills are mounted from there)"
 # Docker would create a missing bind source as root and the container could not
 # write the index, so fail loudly instead.
 [[ -d "$SNAPSHOT_ROOT/.index" ]] || fail "missing $SNAPSHOT_ROOT/.index (run scripts/update-snapshots.sh)"
