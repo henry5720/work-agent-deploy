@@ -59,6 +59,13 @@
       "type": "section",
       "text": {
         "type": "mrkdwn",
+        "text": "*可查閱的專案*\n以下是最近一次同步的唯讀 snapshot，不一定等於 GitHub 最新狀態。\n• `agent-config` — 共用 agent skills 與 MCP 設定\n• `work-docs` — 專案與 API 等產品文件\n• `teamsync-frontend` — TeamSync React 網頁前端\n• `teamsync-backend` — TeamSync 多租戶協作與 AI 平台的 FastAPI 後端\n• `E-commerce-backend` — FastAPI 後端範本（OAuth2/JWT、Docker、MySQL）；沒有已確認的電商產品用途\n• `spc-backend` — FastAPI 後端範本（MySQL、Redis、MinIO、JWT）；沒有已確認的 SPC 產品用途\n• `teamsync-tutorials` — 給客戶看的 TeamSync 操作教學\n• `teamsync-app` — TeamSync Expo iOS／Android 聊天 app，也支援 Web"
+      }
+    },
+    {
+      "type": "section",
+      "text": {
+        "type": "mrkdwn",
         "text": "*裝了哪些工具*\n不用記名字，照範例那樣講就會用到：\n• `slack-list` 待辦表讀寫 —— 「我還有哪些待辦」「新增待辦：…」\n• `company-imagegen` 生圖 —— 「畫一張這個流程的圖」\n• `show-me` 圖解說明 —— 「用圖解釋這段流程怎麼跑」\n• `grilling` 反過來問你 —— 「需求還不清楚，先問我問題」"
       }
     },
@@ -89,7 +96,7 @@
       "elements": [
         {
           "type": "mrkdwn",
-          "text": "*組成*（想知道再看）：Slack 的訊息由 OpenAB 收下，每個對話串開一個 OpenCode，裡面裝的 omo-slim 把工作分給不同角色：統籌和要想清楚的部分用 *Astra*（`company/gpt-6-astra`），翻找程式碼、讀檔這類力氣活用 *Luna*（`company/gpt-5.6-luna`），兩個都跑在公司自己的 gateway 上。統籌的那個覺得需要時，會把工作委派給 Claude Code。模型是設定檔決定的，沒辦法在 Slack 裡切換。"
+          "text": "*組成*（想知道再看）：Slack 的訊息由 OpenAB 收下，每個對話串開一個 OpenCode，裡面裝的 omo-slim 把工作分給不同角色：主 agent 用 *Sol*，oracle 用 *Astra* 做深入分析，其他角色用 *Luna*；都透過公司 gateway 執行。模型由設定檔決定，沒辦法在 Slack 裡切換；主 agent 視任務需要，也可能委派給 Claude Code。"
         }
       ]
     }

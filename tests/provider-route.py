@@ -28,6 +28,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 CONFIG = ROOT / "config/opencode/opencode.json"
+OMO_CONFIG = ROOT / "config/opencode/oh-my-opencode-slim.json"
 IMAGE_CLI = ROOT / "agents/bin/company-image"
 
 # 假的 base URL。刻意不帶 /v1，因為公司 gateway 的 Responses API 不掛在 /v1 底下；
@@ -190,13 +191,55 @@ def main() -> int:
         "apiKey is not the {env:...} placeholder",
     )
 
-    # 換 adapter 不准動 model ID。gateway 認的是這幾個字串。
+    # Model routing must stay on the company provider and every configured ID
+    # must be declared there. This is a local config assertion, not a gateway test.
+    omo = json.loads(OMO_CONFIG.read_text())
+    models = company["models"]
+    expected_main = "company/gpt-6.1-sol"
+    expected_small = "company/gpt-6-luna"
     check(
-        "the model IDs are unchanged",
-        set(company["models"]) == {"gpt-6-astra", "gpt-5.6-terra", "gpt-5.6-luna"},
-        f"models={sorted(company['models'])}",
+        "main model uses the new company model",
+        config.get("model") == expected_main,
+        f"model={config.get('model')!r}",
     )
+    check(
+        "small model uses the new company model",
+        config.get("small_model") == expected_small,
+        f"small_model={config.get('small_model')!r}",
+    )
+    for model_id in (expected_main, expected_small):
+        provider_id = model_id.removeprefix("company/")
+        check(
+            f"{model_id} is declared by the company provider",
+            provider_id in models,
+            f"declared={sorted(models)}",
+        )
 
+    expected_roles = {
+        "orchestrator": expected_main,
+        "oracle": "company/gpt-6-astra",
+        "explorer": expected_small,
+        "librarian": expected_small,
+        "designer": expected_small,
+        "fixer": expected_small,
+    }
+    preset = omo["presets"][omo["preset"]]
+    for role, expected in expected_roles.items():
+        actual = preset.get(role, {}).get("model")
+        check(
+            f"OMO {role} model mapping",
+            actual == expected,
+            f"expected={expected!r} actual={actual!r}",
+        )
+    for role, assignment in preset.items():
+        model_id = assignment.get("model")
+        if model_id:
+            provider_id = model_id.removeprefix("company/")
+            check(
+                f"OMO {role} model is declared by the company provider",
+                model_id.startswith("company/") and provider_id in models,
+                f"model={model_id!r}",
+            )
     if failures:
         print(f"provider-route: {len(failures)} check(s) failed", file=sys.stderr)
         for failure in failures:

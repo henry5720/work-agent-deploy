@@ -103,17 +103,16 @@ WORK_HELPER_ISSUE_MODE=manual
 這些 runtime secret 全部住在同一個 container，沒有 broker 也沒有 token 隔離層。理由與取捨見
 [`adr/0007-single-container-opencode-runtime.md`](adr/0007-single-container-opencode-runtime.md)。
 
-`config/opencode/opencode.json` 裡的模型 ID（`company/gpt-6-astra`、`company/gpt-5.6-terra`、
-`company/gpt-5.6-luna`）
-必須對得上公司 gateway 實際 expose 的名稱。第一次接上 gateway 時先確認：
+`config/opencode/opencode.json` 與 `config/opencode/oh-my-opencode-slim.json` 裡的模型 ID
+必須對得上公司 gateway 實際 expose 的名稱。新模型的本機 context、output、reasoning、tool call
+與 image attachment metadata 是候選設定，不代表 gateway 已提供或支援；第一次接上 gateway 時先確認：
 
 ```bash
 docker compose -f ./compose.yaml exec backlog-agent opencode models
 ```
 
-對不上就改 `config/opencode/opencode.json` 的 `provider.company.models` 與
-`config/opencode/oh-my-opencode-slim.json` 的 preset，兩邊要一致（`tests/static.sh` 會比對
-preset 用到的模型都在 provider 裡）。
+對不上就依 gateway 實際名稱更新這兩份設定，保持主/小模型及 preset 使用的 ID 都在
+`provider.company.models` 中（`tests/static.sh` 會比對 preset 用到的模型）。
 
 Root `.env` 只給 Compose用（snapshot root與 uid）；`env/openab.env` 才會傳進 container。
 `.env`、`env/openab.env` 與 `runtime/` 都不進 Git。Claude login存在 named volume
@@ -403,14 +402,14 @@ crontab -l | grep work-agent-artifact-cleanup
 `COMPANY_GATEWAY_BASE_URL` 或 OpenCode 版本之後都要重跑：
 
 ```bash
-for m in gpt-6-astra gpt-5.6-terra gpt-5.6-luna; do
-  docker compose -f ./compose.yaml exec backlog-agent \
-    opencode run --pure --model "company/$m" 'reply with the single word ok'
-done
+while IFS= read -r m; do
+  docker compose -f ./compose.yaml exec -T backlog-agent \
+    opencode run --pure --model "company/$m" 'reply with the single word ok' </dev/null
+done < <(python3 -c 'import json; print("\n".join(json.load(open("config/opencode/opencode.json"))["provider"]["company"]["models"]))')
 ```
 
-三個都要跑。preset 用到的是 astra 與 luna，terra 仍宣告在 provider 裡；gateway 少 expose 其中
-一個，只有這裡會看得出來。
+逐一驗證 provider 宣告的每個模型，避免文件另存一份可獨立修改的模型清單；gateway 少 expose
+其中一個，只有實際推論會看得出來。
 
 回文字就算過。回 HTTP 405 代表請求打到 `{baseURL}/chat/completions` 而 gateway 只收
 `/responses` —— 先看 `provider.company.npm` 是不是 `@ai-sdk/openai`，再看

@@ -44,6 +44,11 @@ local 實作 agent
 這是明確接受的取捨：邊界靠 Slack workspace 與 app 實際收到的事件、唯讀 mount 與 agent runtime 的 permission 設定，
 不靠 token 隔離。詳見 [`adr/0007-single-container-opencode-runtime.md`](adr/0007-single-container-opencode-runtime.md)。
 
+模型由 OpenCode 經公司 gateway 提供；主模型、小模型與 OMO role mapping 的唯一設定正本是
+[`config/opencode/opencode.json`](../config/opencode/opencode.json) 與
+[`config/opencode/oh-my-opencode-slim.json`](../config/opencode/oh-my-opencode-slim.json)。新模型的
+本機 context、output、reasoning、tool call 與 image attachment metadata 是待核對的候選值，並非 gateway 實測結果；接入時須依 runbook 確認 gateway 實際 expose 的型號與能力。
+
 GitHub credential只到 deployment host 與 local 實作環境，不跨進 product-context bot container。詳見 [`adr/0001-github-access-stops-at-the-host-boundary.md`](adr/0001-github-access-stops-at-the-host-boundary.md)。
 
 Deployment host就是實體host，Compose以維護者自己的帳號執行。第一版曾把它包在restricted Incus instance內，後來因為該帳號本來就在`docker` group而取消。詳見 [`adr/0003-deploy-directly-on-the-fedora-host.md`](adr/0003-deploy-directly-on-the-fedora-host.md)。
@@ -195,9 +200,9 @@ Runtime或部署故障造成工具不能執行時，product-context bot只告知
 ## Agent Runtime 與版本
 
 預設 agent runtime 是 OpenCode 的原生 ACP（`opencode acp`），加上 oh-my-opencode-slim（OMO）
-plugin。OMO 的模型分工是 Luna retrieval、Terra synthesis；`acpAgents.claude-code` 是由 OMO 依任務
-自行決定是否委派的 Claude Code ACP specialist，設定在
-[`../config/opencode/oh-my-opencode-slim.json`](../config/opencode/oh-my-opencode-slim.json)。
+plugin。OMO 由 Sol 統籌、Luna 負責查詢與執行、Astra 負責深入分析；精確角色 mapping 以
+[`../config/opencode/oh-my-opencode-slim.json`](../config/opencode/oh-my-opencode-slim.json) 為準。
+`acpAgents.claude-code` 是由 OMO 依任務自行決定是否委派的 Claude Code ACP specialist，設定在同一份檔案。
 
 Claude specialist 的 ACP adapter 是 image 內由 Docker pin 安裝的 `claude-agent-acp`，不是 runtime
 `npx` download；Claude Code CLI 也在 image 內固定版本。它與 Claude rollback 共用

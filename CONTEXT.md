@@ -62,8 +62,12 @@ _Avoid_: skill registry、registry allowlist、catalog 等於授權
 _Avoid_: Claude 作為預設執行層、runtime npx download
 
 **model roles**:
- 單一 OpenAB container 使用 OpenCode 搭配 OMO remote profile；OMO 由 Luna 負責 retrieval、
- Terra 負責 synthesis，Claude Code 只作受控 specialist；是否委派由 OMO 依任務自行決定。這是 LLM
+ 單一 OpenAB container 使用 OpenCode 搭配 OMO remote profile；Sol 負責 orchestrator/synthesis，
+ Luna 負責 explorer、librarian、designer 與 fixer，Astra 負責 oracle；Claude Code 只作受控 specialist。
+ OpenCode 主模型為 Sol、小模型為 Luna。精確 ID 與角色 mapping 以
+ [`config/opencode/opencode.json`](config/opencode/opencode.json) 和
+ [`config/opencode/oh-my-opencode-slim.json`](config/opencode/oh-my-opencode-slim.json) 為準。
+ 是否委派由 OMO 依任務自行決定。這是 LLM
  routing，非 deterministic，不保證每個複雜工作都會交給 Claude Code。每輪 OMO 不設 hard cap，但記錄
  model、subagent 與 image calls 14 天並在異常時告警。這些角色服務 product-context bot，不改變 bot 的唯讀定位。
 _Avoid_: Claude 作為預設執行層、因方便而 delegate

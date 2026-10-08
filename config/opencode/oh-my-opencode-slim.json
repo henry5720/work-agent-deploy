@@ -5,7 +5,7 @@
   "presets": {
     "company": {
       "orchestrator": {
-        "model": "company/gpt-6-astra",
+        "model": "company/gpt-6.1-sol",
         "variant": "medium",
         "skills": [
           "*"
@@ -25,7 +25,7 @@
         ]
       },
       "explorer": {
-        "model": "company/gpt-5.6-luna",
+        "model": "company/gpt-6-luna",
         "variant": "low",
         "skills": [
           "*"
@@ -35,7 +35,7 @@
         ]
       },
       "librarian": {
-        "model": "company/gpt-5.6-luna",
+        "model": "company/gpt-6-luna",
         "variant": "low",
         "skills": [
           "*"
@@ -45,7 +45,7 @@
         ]
       },
       "designer": {
-        "model": "company/gpt-5.6-luna",
+        "model": "company/gpt-6-luna",
         "variant": "medium",
         "skills": [
           "*"
@@ -55,7 +55,7 @@
         ]
       },
       "fixer": {
-        "model": "company/gpt-5.6-luna",
+        "model": "company/gpt-6-luna",
         "variant": "medium",
         "skills": [
           "*"

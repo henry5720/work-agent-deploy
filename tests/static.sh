@@ -41,6 +41,18 @@ for key in ('OPENCODE_VERSION', 'OMO_VERSION', 'CODEGRAPH_VERSION',
             'CLAUDE_AGENT_ACP_VERSION', 'CLAUDE_CODE_VERSION', 'DOCLING_VERSION'):
     assert re.fullmatch(r'\d+\.\d+\.\d+', versions[key]), key
 
+repos = {}
+for line in (root / 'config/repos.conf').read_text().splitlines():
+    line = line.strip()
+    if not line or line.startswith('#'):
+        continue
+    name, clone_url, branch = line.split('|')
+    repos[name] = (clone_url, branch)
+assert repos['teamsync-tutorials'] == ('git@github.com:ShuChenAI/teamsync-tutorials.git', 'main')
+assert repos['teamsync-app'] == ('git@github.com:ShuChenAI/teamsync-app.git', 'main')
+home = (root / 'config/slack-home.json').read_text()
+assert all(name in home for name in repos), 'repos.conf names must appear in Slack Home JSON'
+
 compose = (root / 'compose.yaml').read_text()
 assert '${OPENAB_IMAGE' not in compose
 assert '${OPENAB_AGENT_RUNTIME' not in compose
