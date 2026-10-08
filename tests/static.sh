@@ -97,6 +97,15 @@ grep -Fq 'PARSE_DOCUMENT_ALLOWED_HOST: 99de68928da234ebcf0c9370443ad7ee.r2.cloud
 grep -Fq 'require_manual_release_gate' "$ROOT/scripts/preflight.sh"
 grep -Fq 'docker compose -f "$ROOT/compose.yaml"' "$ROOT/scripts/deploy.sh"
 grep -Fq 'docker compose -f "$ROOT/compose.yaml"' "$ROOT/scripts/preflight.sh"
+python3 - "$ROOT/scripts/publish-slack-home.sh" <<'PY'
+import pathlib, sys
+script = pathlib.Path(sys.argv[1]).read_text()
+for required in ('users.list', 'next_cursor', 'cursor', '.ok == true',
+                 '.deleted != true', '.is_bot != true', '.is_app_user != true',
+                 'No eligible workspace users', 'Published:'):
+    assert required in script, f'publish-slack-home.sh is missing {required!r}'
+assert 'allowed_users' not in script, 'Home publishing must not read nonexistent allowed_users'
+PY
 ! grep -R -n -E 'scripts/compose\.sh|openab\.claude-acp|OPENAB_AGENT_RUNTIME|OPENAB_IMAGE_(OPENCODE|CLAUDE)' \
   "$ROOT/scripts" "$ROOT/compose.yaml" "$ROOT/config" "$ROOT/README.md" "$ROOT/CLAUDE.md" "$ROOT/docs"
 

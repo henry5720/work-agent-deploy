@@ -96,7 +96,7 @@ agent 不得使用使用者文字提供的 URL、改寫 URL 或自行下載；`P
 - `config/versions.env`：所有版本的正本 —— OpenAB image digest、OpenCode／OMO／CodeGraph、Claude ACP adapter、Claude Code CLI 與 Docling 版本。
 - `Dockerfile`：在固定 OpenAB image上加入 Python 3、git、Docling、CodeGraph、OMO、固定版 Claude ACP adapter 與 Claude Code CLI，build 時預取 `/opt/docling-models` 並驗證 node 可讀，再把 container使用者的 uid對齊 host。
 - `compose.yaml`：單一 OpenAB container，明確傳入 `DOCLING_ARTIFACTS_PATH=/opt/docling-models`。
-- `config/openab.toml`：Slack allowlist、session pool、Cloudflare R2 filestore，以及預設的
+- `config/openab.toml`：Slack 存取設定、session pool、Cloudflare R2 filestore，以及預設的
   `opencode acp` agent；R2 credentials 只用 `${R2_ACCESS_KEY_ID}`／`${R2_SECRET_ACCESS_KEY}`
   interpolation。
 - `config/opencode/opencode.json`：OpenCode 的 provider、模型、instructions、skills 路徑與 permission。
@@ -112,7 +112,8 @@ agent 不得使用使用者文字提供的 URL、改寫 URL 或自行下載；`P
 - `scripts/update-snapshots.sh`：host 端 clone/fetch/reset，並重建 CodeGraph 索引。
 - `scripts/preflight.sh`：部署前檢查 secrets、版本 pin、目錄擁有權與 snapshot 狀態。
 - `managed-claude-settings.json`：Claude specialist 使用的既有設定檔。
-- `scripts/publish-slack-home.sh`：把 Home view發布給所有授權使用者。
+- `scripts/publish-slack-home.sh`：透過 Slack `users.list` 列出本 workspace 成員，並逐一發布 Home view；
+  發布流程與 `users:read` scope 說明見 [`docs/runbook.md`](docs/runbook.md)。
 - `scripts/install-sync-cron.sh`：建立目錄並寫入兩個每小時的 crontab entry（snapshot 同步、artifact cleanup）。
 - `scripts/cleanup-artifacts.sh`：cron 呼叫的那一支，在 container 內執行 `slack-list cleanup` 收掉超過 24 小時的 artifact。
 - `docs/runbook.md`：deployment host首次安裝、Slack 設定與日常操作。

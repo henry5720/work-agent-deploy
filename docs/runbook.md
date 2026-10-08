@@ -47,16 +47,25 @@ token，必須 **Reinstall to Workspace**。
 Socket Mode用 WebSocket接收 events，所以不用填 Event Subscriptions的 Request URL，也不用設定
 Incoming Webhook。OpenAB使用 `xoxb-...` 透過 Slack Web API回覆訊息。
 
-發布功能首頁給 `config/openab.toml` 內的授權使用者：
+`users:read` scope 必須經人工確認已套用到 bot token；新增 scope 後要 **Reinstall to Workspace**。
+發布腳本用該 token 呼叫 [`users.list`](https://api.slack.com/methods/users.list)，逐頁列出
+目前這個 Slack workspace 的成員，略過已刪除、bot 與 app user，再對每位合格真人呼叫
+[`views.publish`](https://api.slack.com/methods/views.publish)。Slack 的 `views.publish`
+需要 `user_id`，沒有 workspace broadcast；這代表目前 workspace 的成員清單，不保證涵蓋其他
+workspace。這個名單不代表 OpenAB 授權名單，也不會改變 `config/openab.toml` 的存取設定。
+
+發布功能首頁：
 
 ```bash
 ./scripts/publish-slack-home.sh
 ```
 
 文案放在 `config/slack-home.json`。修改後重跑同一指令即可；不需要訂閱 `app_home_opened`。
+若沒有合格成員或任一發布失敗，指令會以非零狀態結束，並回報成功／失敗數；失敗時會停止，
+不會把部分發布回報成成功。
 
-授權使用者維護在 `config/openab.toml`。因 OpenAB目前需要 `allow_all_channels = true` 才能收 DM，
-不可把 app邀進其他 channel，否則會擴大入口。
+此操作只發布 Home view，不改 OpenAB 使用者權限。因 OpenAB目前需要 `allow_all_channels = true`
+才可收 DM，不可把 app邀進其他 channel，否則會擴大入口。
 
 ## 2. Local 首次啟動
 
