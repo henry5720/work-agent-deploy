@@ -20,6 +20,8 @@
 
 | 要改什麼 | 正本 |
 |---|---|
+| 個人 machine dotfiles 與 instructions | `chezmoi` 管理的 personal dotfiles（外部正本，不是本 deployment repo） |
+| Bot runtime contract、provider/model/permission 與 container mount | 本 deployment repo：`agents/CLAUDE.md`、`config/opencode/`、`compose.yaml` |
 | 領域詞彙 | `CONTEXT.md` |
 | 系統行為與能力邊界 | `docs/system-design.md` |
 | 所有版本與 agent runtime 選擇 | `config/versions.env` |
@@ -34,10 +36,13 @@
 | Host 排程（snapshot 同步、artifact cleanup） | `scripts/lib.sh` 的 `render_crontab` |
 | PM 在 Slack Home 看到的能力說明 | `config/slack-home.json`（改 `repos.conf` 要一起看這份） |
 | Bot行為 | `agents/CLAUDE.md` |
-| Bot可用的 skill | `agent-config/skills`（public repo，不在這個 repo，部署層不裁這份 catalog） |
+| Skill 與 MCP catalog 定義 | `agent-config`（public repo 的 canonical catalog；不代表這個 bot 已啟用或獲准使用） |
 | Deployment host操作步驟 | `docs/runbook.md` |
 
 同一個值若必須出現在文件和設定，設定是機器正本；文件要連回設定，不要另造可獨立修改的清單。
+`agent-config` 的 skill／MCP catalog 是可見性與定義的正本，不是 runtime authorization。是否能由這個 bot
+使用，仍由本 repo 的 OpenCode permission、OMO/runtime 設定、`agents/CLAUDE.md` contract 與 mount 邊界共同決定；
+不要在 deployment repo 另抄一份 skill allowlist。
 
 ## 不可破壞的邊界
 

@@ -240,10 +240,12 @@ OpenAB 只有一個 deployment runtime：`config/openab.toml` 的 `opencode acp`
   `runtime/openab`）是不同程式的不同目錄，只差一個字，讀 compose 時不要看混。
 - Container使用者的 uid/gid由 `HOST_UID`／`HOST_GID` build arg設定，必須等於執行 docker的 host使用者，可寫 bind mount才成立。
 - Bind mount帶 `:z`，SELinux enforcing的 host才讀得到；`z` 會 relabel來源目錄，所以 snapshot root是專用目錄。
-- Skills由 public repo `agent-config` 的 `skills/` 整個目錄掛成 `/home/node/.claude/skills`。
-  Claude runtime 當它是 personal level skill；OpenCode 由 `config/opencode/opencode.json` 的
-  `skills.paths` 指過去。部署層不裁這份 catalog，跑不動的 skill 由 `agents/CLAUDE.md` 用文字擋。
-  agent-config 由 skillshare 管理，`main` 上的新 skill會在下次同步後自動生效，不需要改這個 repo。
+- Skill 與 MCP 定義的 canonical catalog 是 public repo `agent-config`（由 skillshare 管理）；其中 `skills/`
+  整個目錄唯讀掛成 `/home/node/.claude/skills`，OpenCode 再由
+  `config/opencode/opencode.json` 的 `skills.paths` 指向它。catalog 可見不等於 OpenCode permission allow，
+  也不等於這個 runtime contract 允許 bot 使用；實際 authorization 仍由本 repo 的 permission、OMO/runtime
+  設定與 `agents/CLAUDE.md` 決定。同步新 catalog entry 不會自動新增 bot 能力；要新增能力必須 review
+  permission、runtime contract 與 Slack Home，且不在 deployment repo 另抄一份 skill 清單。
 - OpenAB state與 artifact 暫存檔存在 deployment repo的 Git-ignored `runtime/`，不隨 container重建刪除。
 - Project資料中可寫的只有 `/home/node/drafts` 與 `/home/node/code/.index`；repo源碼全部唯讀。
 - 每個 snapshot 的 `.codegraph` 是指向 `.index/<repo>` 的相對 symlink。CodeGraph索引是WAL模式的SQLite，必須可寫；把它移出唯讀樹讓源碼的唯讀保證維持不變。索引由host每小時用runtime image重建，agent只能查詢。

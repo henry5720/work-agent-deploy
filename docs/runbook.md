@@ -505,15 +505,18 @@ docker compose -f ./compose.yaml down
 
 ### 更新或新增 Skill
 
-`/home/node/.claude/skills` 是 `agent-config/skills` 整個目錄的 read-only mount。agent-config 是 skillshare
-管理的 public repo，修改或新增 skill只要 push到 `agent-config` 的 `main`，下一次同步（每小時）之後就會生效，
-**不需要改這個 repo，也不需要重新 build或 deploy**。skill 怎麼安裝、更新第三方來源，看 agent-config 自己的 README。
+`/home/node/.claude/skills` 是 `agent-config/skills` 整個目錄的 read-only mount。`agent-config` 是 skill 與
+MCP 定義的 canonical public catalog，由 skillshare 管理；更新它只會改變 snapshot 裡可讀到的 catalog，
+不會自動新增這個 bot 的 runtime capability。要讓 bot 使用新能力，必須先 review 本 repo 的 OpenCode
+permission、OMO/runtime 設定、`agents/CLAUDE.md` contract 與 Slack Home，再依需要部署；不要把 catalog
+可見性當成 authorization。skill 怎麼安裝、更新第三方來源，看 agent-config 自己的 README。
 
 要立即生效就在 host上執行 `./scripts/update-snapshots.sh`。
 
-部署層不裁這份 catalog：整個目錄都掛進去，Claude runtime 當它是 personal level skill，
-OpenCode 由 `config/opencode/opencode.json` 的 `skills.paths` 指過去。**讀得到不等於能跑**，
-不該跑的 skill 寫在 `agents/CLAUDE.md`。
+部署層不裁這份 catalog：整個目錄都掛進去，Claude runtime 當它是 personal level skill，OpenCode
+由 `config/opencode/opencode.json` 的 `skills.paths` 指過去。**讀得到不等於 permission allow，也不等於
+contract 允許執行**；runtime authorization 以本 repo 設定與 `agents/CLAUDE.md` 為準，不在 runbook 另列
+一份可獨立修改的 skill allowlist。
 
 `slack-list` 設定只讀環境變數：container 從 `env/openab.env` 拿到，不需要 `~/.config/slack-list/.env`。
 
@@ -521,8 +524,9 @@ OpenCode 由 `config/opencode/opencode.json` 的 `skills.paths` 指過去。**�
 `config/repos.conf` 而失敗。確認新的 `agent-config` snapshot 同步成功後，刪掉 `$SNAPSHOT_ROOT/work-helper`
 與 `$SNAPSHOT_ROOT/.index/work-helper`。
 
-唯一需要改這個 repo的情況：新 skill在這個環境跑不動（需要 `gh`、`git worktree`、可寫 repo或 local 專用工具），
-或它的行為會撞到 Slack回覆規則。那要在 `agents/CLAUDE.md` 的「Skill 邊界」寫明，否則 agent會在 Slack上嘗試然後失敗。
+需要改這個 repo的情況包括：要讓 catalog 中的新能力成為 bot capability、它需要新的 runtime permission／mount，
+或它的行為會撞到 Slack 回覆規則。這時要同步 review 本 repo 的 provider／permission／mount、
+`agents/CLAUDE.md` 的 contract 與 Slack Home；不要只同步 catalog，否則 agent 可能在 Slack 上嘗試後失敗。
 
 已啟動的Claude session可能已把舊skill內容讀進context。同步後使用新的Slack thread或等待session回收再驗證，不用以舊session判斷同步失敗。
 

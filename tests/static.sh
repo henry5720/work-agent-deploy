@@ -17,7 +17,7 @@ test -x "$ROOT/agents/bin/slack-thread-artifact"
 test -x "$ROOT/agents/bin/parse-document"
 
 python3 - "$ROOT" <<'PY'
-import os, pathlib, re, subprocess, tomllib
+import json, os, pathlib, re, subprocess, tomllib
 root = pathlib.Path(__import__('sys').argv[1])
 cfg = tomllib.loads((root / 'config/openab.toml').read_text())
 assert cfg['slack']['allow_all_users'] is True
@@ -89,6 +89,18 @@ assert '${OPENAB_CONFIG' not in compose
 assert 'openab.toml:/etc/openab/config.toml' in compose
 assert '@sha256:' in compose
 assert ':latest' not in compose and ':stable' not in compose
+
+opencode = json.loads((root / 'config/opencode/opencode.json').read_text())
+assert opencode['instructions'] == ['/home/node/CLAUDE.md']
+assert opencode['skills']['paths'] == ['/home/node/.claude/skills']
+skill_permission = opencode['permission']['skill']
+assert skill_permission.get('*') == 'deny'
+assert skill_permission.get('show-me') == 'allow'
+assert './agents/CLAUDE.md:/home/node/CLAUDE.md:ro,z' in compose
+assert '${SNAPSHOT_ROOT:?set SNAPSHOT_ROOT in .env}/agent-config/skills:/home/node/.claude/skills:ro,z' in compose
+assert './config/opencode/opencode.json:/home/node/.config/opencode/opencode.json:ro,z' in compose
+assert './config/opencode/oh-my-opencode-slim.json:/home/node/.config/opencode/oh-my-opencode-slim.json:ro,z' in compose
+assert '- opencode-config:/home/node/.config/opencode' in compose
 PY
 
 grep -Fq 'allow_all_users = true' "$ROOT/config/openab.toml"

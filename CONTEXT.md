@@ -48,10 +48,12 @@ key 只從 runtime env 讀。兩個 agent runtime 共用同一支。
 _Avoid_: broker、upload helper、任意 gateway 呼叫
 
 **skill catalog**:
-public repo `agent-config` 的 `skills/` 整個目錄（由 skillshare 管理），以唯讀 mount 進 container。部署層不裁這份 catalog，
-所以「skill 在 container 內讀得到」不等於「這個環境可以跑它」。哪些 skill 不准跑寫在
-`agents/CLAUDE.md`，那是行為限制，不是 mount 或設定上的 allowlist。
-_Avoid_: skill registry、registry allowlist、catalog 等於授權
+ public repo `agent-config`（由 skillshare 管理）的 skills／MCP 定義 catalog；其中 `skills/` 整個目錄以唯讀
+ mount 進 container。部署層不裁 catalog，所以「skill 在 container 內讀得到」不等於 OpenCode 已 allow，
+ 也不等於 runtime contract 允許 bot 使用。真正的 runtime authorization 以本 repo 的 OpenCode permission、
+ OMO/runtime 設定與 `agents/CLAUDE.md` 為準；新增 bot 能力還要 review permission、contract 與 Slack Home，
+ 不在這裡另造一份 skill 清單。
+_Avoid_: skill registry、registry allowlist、catalog 等於授權、permission 是 sandbox
 
 **agent runtime**:
  container 內實際接 ACP 的 CLI。預設 OpenAB process 是 OpenCode（`opencode acp`）搭 OMO plugin；
