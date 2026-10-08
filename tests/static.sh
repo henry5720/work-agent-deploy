@@ -17,7 +17,7 @@ test -x "$ROOT/agents/bin/slack-thread-artifact"
 test -x "$ROOT/agents/bin/parse-document"
 
 python3 - "$ROOT" <<'PY'
-import pathlib, re, tomllib
+import os, pathlib, re, subprocess, tomllib
 root = pathlib.Path(__import__('sys').argv[1])
 cfg = tomllib.loads((root / 'config/openab.toml').read_text())
 assert cfg['slack']['allow_all_users'] is True
@@ -52,6 +52,35 @@ assert repos['teamsync-tutorials'] == ('git@github.com:ShuChenAI/teamsync-tutori
 assert repos['teamsync-app'] == ('git@github.com:ShuChenAI/teamsync-app.git', 'main')
 home = (root / 'config/slack-home.json').read_text()
 assert all(name in home for name in repos), 'repos.conf names must appear in Slack Home JSON'
+
+deploy = (root / 'scripts/deploy.sh').read_text()
+assert 'VERSION_FILE="$ROOT/config/versions.env"' in deploy
+assert "while IFS='=' read -r key value; do" in deploy
+assert 'done < "$VERSION_FILE"' in deploy
+assert 'source "$VERSION_FILE"' not in deploy and 'eval ' not in deploy
+assert 'version_keys=(OPENCODE_VERSION OMO_VERSION CLAUDE_AGENT_ACP_VERSION CLAUDE_CODE_VERSION)' in deploy
+assert 'OPENCODE_VERSION|OMO_VERSION|CLAUDE_AGENT_ACP_VERSION|CLAUDE_CODE_VERSION)' in deploy
+assert '[[ -z ${!key:-} ]]' in deploy, 'pre-set version environment values must be preserved'
+loader_start = deploy.index('VERSION_FILE=')
+loader_end = deploy.index('compose() {', loader_start)
+loader = deploy[loader_start:loader_end]
+version_keys = ('OPENCODE_VERSION', 'OMO_VERSION', 'CLAUDE_AGENT_ACP_VERSION', 'CLAUDE_CODE_VERSION')
+print_versions = 'printf "%s\\n" ' + ' '.join(f'"${{{key}}}"' for key in version_keys)
+clean_env = {'PATH': os.environ.get('PATH', '')}
+loaded = subprocess.run(
+    ['bash', '-c', 'set -euo pipefail; ROOT="$1"; ' + loader + print_versions, 'test', str(root)],
+    env=clean_env, check=True, capture_output=True, text=True,
+).stdout.splitlines()
+assert loaded == [versions[key] for key in version_keys], 'clean deploy environment must load pinned versions'
+overridden = subprocess.run(
+    ['bash', '-c', 'set -euo pipefail; ROOT="$1"; ' + loader + print_versions, 'test', str(root)],
+    env={**clean_env, 'OPENCODE_VERSION': '9.8.7'}, check=True, capture_output=True, text=True,
+).stdout.splitlines()
+assert overridden == ['9.8.7', *[versions[key] for key in version_keys[1:]]], 'explicit version override must be preserved'
+
+snapshot_updater = (root / 'scripts/update-snapshots.sh').read_text()
+assert 'SNAPSHOT_ROOT="$ROOT" docker compose -f "$REPO_DIR/compose.yaml" run' in snapshot_updater
+assert 'docker compose -f "$ROOT/compose.yaml" run' not in snapshot_updater
 
 compose = (root / 'compose.yaml').read_text()
 assert '${OPENAB_IMAGE' not in compose

@@ -5,6 +5,33 @@ ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 # shellcheck source=scripts/lib.sh
 source "$ROOT/scripts/lib.sh"
 load_env "$ROOT"
+VERSION_FILE="$ROOT/config/versions.env"
+version_keys=(OPENCODE_VERSION OMO_VERSION CLAUDE_AGENT_ACP_VERSION CLAUDE_CODE_VERSION)
+declare -A pinned_versions=()
+[[ -r "$VERSION_FILE" ]] || { printf 'FAIL: missing %s\n' "$VERSION_FILE" >&2; exit 1; }
+while IFS='=' read -r key value; do
+  case "$key" in
+    OPENCODE_VERSION|OMO_VERSION|CLAUDE_AGENT_ACP_VERSION|CLAUDE_CODE_VERSION)
+      [[ "$value" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+        printf 'FAIL: invalid %s in config/versions.env\n' "$key" >&2
+        exit 1
+      }
+      pinned_versions["$key"]=$value
+      ;;
+  esac
+done < "$VERSION_FILE"
+for key in "${version_keys[@]}"; do
+  value=${pinned_versions[$key]:-}
+  [[ -n "$value" ]] || { printf 'FAIL: missing %s in config/versions.env\n' "$key" >&2; exit 1; }
+  if [[ -z ${!key:-} ]]; then
+    printf -v "$key" '%s' "$value"
+    export "$key"
+  fi
+  [[ ${!key} =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+    printf 'FAIL: invalid version override for %s\n' "$key" >&2
+    exit 1
+  }
+done
 compose() { docker compose -f "$ROOT/compose.yaml" "$@"; }
 
 "$ROOT/scripts/preflight.sh"
